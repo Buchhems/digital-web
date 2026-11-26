@@ -104,6 +104,9 @@ export class Editor {
 
   // ---------- Zeiger-Ereignisse ----------
   down(e) {
+    // Offenes Eingabefeld (Eigenschaften) zuerst übernehmen – sonst ginge die Eingabe verloren
+    const ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) ae.blur();
     e.preventDefault();
     this.cv.setPointerCapture(e.pointerId);
     const sp = this.local(e);
@@ -125,7 +128,7 @@ export class Editor {
       const c = this.hitComp(w);
       if (c && DEF[c.type].interactive) {
         const def = DEF[c.type], st = this.sim.st(c);
-        if (def.press) { def.press(st, attrsOf(c)); this.sim.update(c); this.redraw(); }
+        if (def.press) { def.press(st, attrsOf(c)); this.sim.update(c); this.hooks.onSimChange?.(); this.redraw(); }
         this.action = { ...base, kind: 'simpress', c };
         return;
       }
@@ -193,6 +196,7 @@ export class Editor {
       const pin = this.hitPin(w, this.tol(e));
       a.ex = pin ? pin.x : snap(w.x); a.ey = pin ? pin.y : snap(w.y);
       a.eh = pin ? pinH(pin) : null;
+      a.snapPin = pin && !(pin.x === a.sx0 && pin.y === a.sy0) ? pin : null;
       if (a.hFirst === null && (a.ex !== a.sx0 || a.ey !== a.sy0)) a.hFirst = Math.abs(w.x - a.sx0) >= Math.abs(w.y - a.sy0);
       this.redraw();
     } else if (a.kind === 'move') {
@@ -414,6 +418,11 @@ export class Editor {
       ctx.setLineDash([]);
       ctx.fillStyle = COL.sel;
       for (const p of [pts[0], pts[pts.length - 1]]) { ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill(); }
+      // Anschluss, an dem die Leitung andocken wird, deutlich hervorheben (sichtbar neben dem Finger)
+      if (a.snapPin) {
+        ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(22,163,74,0.18)';
+        ctx.beginPath(); ctx.arc(a.snapPin.x, a.snapPin.y, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
     }
     if (a?.kind === 'rect' && a.cur) {
       ctx.fillStyle = COL.selFill; ctx.strokeStyle = COL.sel; ctx.lineWidth = 1.5 / s;
@@ -442,8 +451,8 @@ export class Editor {
 }
 
 // Kleine Vorschau eines Bauteils (Palette)
-export function drawPreview(canvas, type, attrs = {}) {
-  const c = { id: -1, type, x: 0, y: 0, rot: 0, attrs };
+export function drawPreview(canvas, type, attrs = {}, sub) {
+  const c = { id: -1, type, x: 0, y: 0, rot: 0, attrs, sub };
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.clientWidth || 64, H = canvas.clientHeight || 44;
   canvas.width = W * dpr; canvas.height = H * dpr;

@@ -1,5 +1,6 @@
 // Datenmodell der Schaltung und Netzbildung
 import { DEF, pinsWorld, attrsOf } from './components.js';
+import { library } from './lib.js';
 
 let nextId = 1;
 export const newId = () => nextId++;
@@ -23,7 +24,7 @@ export class Circuit {
   }
   toJSON() {
     return {
-      comps: this.comps.map(({ type, x, y, rot, attrs, raw }) => ({ type, x, y, rot, attrs, ...(raw ? { raw } : {}) })),
+      comps: this.comps.map(({ type, x, y, rot, attrs, raw, sub }) => ({ type, x, y, rot, attrs, ...(raw ? { raw } : {}), ...(sub ? { sub } : {}) })),
       wires: this.wires.map(w => [w.x1, w.y1, w.x2, w.y2]),
       digAttributes: this.digAttributes,
     };
@@ -34,6 +35,7 @@ export class Circuit {
       if (!DEF[k.type]) continue;
       const comp = c.addComp(k.type, k.x, k.y, k.attrs || {}, k.rot || 0);
       if (k.raw) comp.raw = k.raw;
+      if (k.sub) comp.sub = k.sub;
     }
     for (const w of j.wires || []) c.addWire(...w);
     c.digAttributes = j.digAttributes || null;
@@ -103,27 +105,53 @@ class UF {
   union(a, b) { const ra = this.find(a), rb = this.find(b); if (ra !== rb) this.p.set(ra, rb); }
 }
 
-// Netze bilden: liefert {nets, compPins: Map(id -> {ins:[net], outs:[net]}), wireNet: Map(wireId -> net)}
+// Netze bilden. Teilschaltungen werden (wie in Digital) rekursiv eingebettet.
+// Liefert {nets, compPins: Map(id -> {ins,outs}), wireNet: Map(wireId -> net), comps: flache Bauteilliste}
 export function buildNets(circuit) {
   const uf = new UF();
-  const pk = (x, y) => 'p' + x + ',' + y;
-  const wires = circuit.wires;
-  for (const w of wires) { uf.union('w' + w.id, pk(w.x1, w.y1)); uf.union('w' + w.id, pk(w.x2, w.y2)); }
-  const pts = new Map();
-  for (const w of wires) { pts.set(pk(w.x1, w.y1), [w.x1, w.y1]); pts.set(pk(w.x2, w.y2), [w.x2, w.y2]); }
-  const allPins = [];
-  for (const c of circuit.comps) {
-    const a = attrsOf(c);
-    for (const p of pinsWorld(c)) {
-      allPins.push({ c, p });
-      pts.set(pk(p.x, p.y), [p.x, p.y]);
-      if (p.tunnel) uf.union(pk(p.x, p.y), 'T:' + a.NetName);
+  const flat = [];   // {c, pins:[{key, p}]}
+  const topWires = [];
+  const problems = [];
+
+  function flatten(circ, pre, depth) {
+    const pk = (x, y) => pre + 'p' + x + ',' + y;
+    const wk = w => pre + 'w' + w.id;
+    for (const w of circ.wires) {
+      uf.union(wk(w), pk(w.x1, w.y1)); uf.union(wk(w), pk(w.x2, w.y2));
+      if (!pre) topWires.push(w);
+    }
+    // T-Verbindungen: Drahtende liegt im Inneren eines anderen Drahtes.
+    // (Anschlüsse verbinden nur, wenn eine Leitung dort endet – wie in Digital.)
+    for (const v of circ.wires) for (const [x, y] of [[v.x1, v.y1], [v.x2, v.y2]])
+      for (const w of circ.wires) if (w !== v && onSegment(x, y, w)) uf.union(pk(x, y), wk(w));
+    for (const c of circ.comps) {
+      if (c.type === 'Text' || c.type === 'Unknown' || c.type === 'Testcase') continue;
+      if (depth > 0 && (c.type === 'In' || c.type === 'Out' || c.type === 'Clock')) continue; // werden zu Anschlüssen
+      const pins = pinsWorld(c);
+      if (c.type === 'Sub') {
+        const sub = library.get(c.sub);
+        if (!sub) { problems.push(`Baustein „${c.sub}“ fehlt.`); continue; }
+        if (depth > 16) { problems.push(`Baustein „${c.sub}“ enthält sich selbst.`); continue; }
+        const subPre = pre + c.id + '/';
+        flatten(sub, subPre, depth + 1);
+        const ports = sub.comps.filter(k => k.type === 'In' || k.type === 'Clock');
+        const outs = sub.comps.filter(k => k.type === 'Out');
+        const inPins = pins.filter(p => !p.out), outPins = pins.filter(p => p.out);
+        [...ports.map((k, i) => [k, inPins[i]]), ...outs.map((k, i) => [k, outPins[i]])].forEach(([k, p]) => {
+          if (!p) return;
+          const q = pinsWorld(k)[0];
+          uf.union(pk(p.x, p.y), subPre + 'p' + q.x + ',' + q.y);
+          // Anschluss als Punkt registrieren (für Netz-Zuordnung)
+        });
+        continue;
+      }
+      const fc = pre ? { ...c, id: pre + c.id } : c;
+      const a = attrsOf(c);
+      flat.push({ c: fc, pins: pins.map(p => ({ key: pk(p.x, p.y), p })) });
+      for (const p of pins) if (p.tunnel) uf.union(pk(p.x, p.y), 'T:' + pre + a.NetName);
     }
   }
-  // T-Verbindungen: Drahtende liegt im Inneren eines anderen Drahtes.
-  // (Anschlüsse verbinden nur, wenn eine Leitung dort endet – wie in Digital.)
-  for (const v of wires) for (const [x, y] of [[v.x1, v.y1], [v.x2, v.y2]])
-    for (const w of wires) if (w !== v && onSegment(x, y, w)) uf.union(pk(x, y), 'w' + w.id);
+  flatten(circuit, '', 0);
 
   const netIndex = new Map();
   const nets = [];
@@ -133,22 +161,28 @@ export function buildNets(circuit) {
     return netIndex.get(r);
   };
   const compPins = new Map();
-  for (const c of circuit.comps) compPins.set(c.id, { ins: [], outs: [] });
-  for (const { c, p } of allPins) {
-    const n = getNet(pk(p.x, p.y));
-    const net = nets[n];
-    const cp = compPins.get(c.id);
-    if (p.bits) { net.bitSet.add(p.bits); net.bits = Math.max(net.bits, p.bits); }
-    if (p.out) { net.drivers.push({ c, i: cp.outs.length }); cp.outs.push(n); }
-    else { net.readers.push({ c, i: cp.ins.length }); cp.ins.push(n); }
+  for (const { c, pins } of flat) {
+    const cp = { ins: [], outs: [] };
+    compPins.set(c.id, cp);
+    for (const { key, p } of pins) {
+      const n = getNet(key);
+      const net = nets[n];
+      if (p.bits) { net.bitSet.add(p.bits); net.bits = Math.max(net.bits, p.bits); }
+      if (p.out) { net.drivers.push({ c, i: cp.outs.length }); cp.outs.push(n); }
+      else { net.readers.push({ c, i: cp.ins.length }); cp.ins.push(n); }
+    }
   }
   const wireNet = new Map();
-  for (const w of wires) { const n = getNet('w' + w.id); wireNet.set(w.id, n); nets[n].wires.push(w); }
+  for (const w of topWires) { const n = getNet('w' + w.id); wireNet.set(w.id, n); nets[n].wires.push(w); }
+  // Bitbreiten an Baustein-Anschlüssen auf oberster Ebene mitprüfen
+  for (const c of circuit.comps) if (c.type === 'Sub') for (const p of pinsWorld(c)) {
+    const n = getNet('p' + p.x + ',' + p.y); if (p.bits) { nets[n].bitSet.add(p.bits); nets[n].bits = Math.max(nets[n].bits, p.bits); }
+  }
   for (const net of nets) {
     if (!net.bits) net.bits = 1;
     if (net.bitSet.size > 1) net.error = 'bits';
   }
-  return { nets, compPins, wireNet };
+  return { nets, compPins, wireNet, comps: flat.map(f => f.c), problems };
 }
 
 // Verbindungspunkte (für die Punkte an Abzweigungen)

@@ -2,6 +2,8 @@
 // dem Desktop-Programm "Digital" von H. Neemann, damit .dig-Dateien
 // austauschbar sind. Symbole: DIN EN 60617 (IEC) als Standard, IEEE optional.
 
+import { library, libVersion } from './lib.js';
+
 export const S = 20;
 export const mask = b => (b >= 32 ? 0xFFFFFFFF : 2 ** b - 1);
 const v0 = x => (x == null ? 0 : x);
@@ -12,6 +14,7 @@ export const settings = { shapes: 'iec' };
 // ---------- Eigenschaften ----------
 const P = {
   label: { key: 'Label', label: 'Beschriftung', type: 'text' },
+  gateLabel: { key: 'Label', label: 'Beschriftung', type: 'text', hint: 'Beschriftete Gatter erscheinen in der Wertetabelle als Zwischenschritt.' },
   bits: { key: 'Bits', label: 'Datenbits', type: 'int', min: 1, max: 32 },
   inputs: { key: 'Inputs', label: 'Anzahl Eingänge', type: 'int', min: 2, max: 16 },
   wide: { key: 'wideShape', label: 'Breite Form', type: 'bool' },
@@ -86,7 +89,7 @@ function gate(type, name, sym, fn, invOut, ieee) {
   return {
     type, name, cat: 'Logikgatter',
     defaults: isNot ? { Bits: 1, Label: '' } : { Inputs: 2, Bits: 1, wideShape: false, Label: '', inverterConfig: [] },
-    props: isNot ? [P.bits, P.label] : [P.inputs, P.bits, P.wide, P.invert, P.label],
+    props: isNot ? [P.bits, P.gateLabel] : [P.inputs, P.bits, P.wide, P.invert, P.gateLabel],
     geo(a) {
       const n = isNot ? 1 : a.Inputs;
       const inv = new Set((a.inverterConfig || []).map(s => parseInt(String(s).replace('In_', '')) - 1).filter(i => i >= 0 && i < n));
@@ -272,7 +275,7 @@ const VDD = {
 const Probe = {
   type: 'Probe', name: 'Messwert', cat: 'Ein-/Ausgabe',
   defaults: { Label: '', intFormat: 'def' },
-  props: [P.label, P.format],
+  props: [{ ...P.label, hint: 'Mit Beschriftung erscheint der Messwert in der Wertetabelle als Zwischenschritt.' }, P.format],
   geo(a) { return { pins: [{ n: 'in', bits: 0, x: 0, y: 0, out: false }], box: { x0: 0, y0: -10, x1: 50, y1: 10 } }; },
   eval() { return []; },
   draw(r, c, a, g, st) {
@@ -510,6 +513,51 @@ const Text = {
   },
 };
 
+// Eigener Baustein (Teilschaltung). Anschlüsse in der Reihenfolge der Ein-/Ausgänge
+// in der Teilschaltung (wie in Digital: Eingänge = In und Clock, Ausgänge = Out).
+export function subInterface(circuit) {
+  const ins = [], outs = [];
+  for (const k of circuit.comps) {
+    const a = { ...DEF[k.type]?.defaults, ...k.attrs };
+    if (k.type === 'In') ins.push({ n: a.Label || '?', bits: a.Bits || 1 });
+    else if (k.type === 'Clock') ins.push({ n: a.Label || '?', bits: 1, clock: true });
+    else if (k.type === 'Out') outs.push({ n: a.Label || '?', bits: a.Bits || 1 });
+  }
+  return { ins, outs };
+}
+const Sub = {
+  type: 'Sub', name: 'Baustein', cat: null,
+  defaults: { Label: '', Width: 3 },
+  props: [P.label, { key: 'Width', label: 'Breite', type: 'int', min: 2, max: 10 }],
+  geo(a, c) {
+    const sub = library.get(c?.sub);
+    if (!sub) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };
+    const { ins, outs } = subInterface(sub);
+    if (!ins.length && !outs.length) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };
+    return generic({ ins, outs: outs.length ? outs : [], width: a.Width || 3 });
+  },
+  eval() { return []; },
+  draw(r, c, a, g) {
+    if (g.missing) { r.rect(0, -10, 100, 30, true, '#fde8e8'); r.text(50, 10, (c.sub || '?') + ' fehlt', 0, 0, 11, 'name'); return; }
+    drawGenericBox(r, g, a, { title: c.sub });
+  },
+};
+
+// Testfall (Digital: "Testcase")
+const Testcase = {
+  type: 'Testcase', name: 'Testfall', cat: 'Sonstiges',
+  defaults: { Label: '', Testdata: 'A B Y\n0 0 0\n0 1 0\n1 0 0\n1 1 1' },
+  props: [P.label, { key: 'Testdata', label: 'Testdaten', type: 'textarea', mono: true, hint: 'Erste Zeile: Namen der Ein- und Ausgänge. Dann je Zeile die Werte. X = beliebig, C = Taktimpuls, # = Kommentar.' }],
+  geo() { return { pins: [], box: { x0: 0, y0: 0, x1: 80, y1: 40 } }; },
+  eval() { return []; },
+  draw(r, c, a) {
+    const res = c._result;
+    r.rrect(1, 1, 79, 39, 6, res === 'ok' ? '#dcfce7' : res === 'fail' ? '#fee2e2' : '#fff');
+    r.text(40, a.Label ? 13 : 20, res === 'ok' ? 'Test ✓' : res === 'fail' ? 'Test ✗' : 'Test', 0, 0, 13, 'value');
+    if (a.Label) r.text(40, 28, a.Label, 0, 0, 11, 'name');
+  },
+};
+
 // Platzhalter für Bauteile aus .dig-Dateien, die (noch) nicht unterstützt werden
 export const Unknown = {
   type: 'Unknown', name: 'Unbekannt', cat: null,
@@ -535,9 +583,9 @@ export const DEFS = [
   ff('D_FF', 'D-Flipflop', ['D', 'C'], v => v.D, { Bits: 1 }, [P.bits]),
   ff('T_FF', 'T-Flipflop', a => (a.withEnable === false ? ['C'] : ['T', 'C']), (v, q, m, a) => (a.withEnable === false || v.T ? ~q : q), { withEnable: true }, [P.withEnable]),
   Add, Comparator, Counter, Register,
-  Text,
+  Text, Testcase,
 ];
-export const DEF = Object.fromEntries([...DEFS, Unknown].map(d => [d.type, d]));
+export const DEF = Object.fromEntries([...DEFS, Unknown, Sub].map(d => [d.type, d]));
 export const CATEGORIES = [...new Set(DEFS.map(d => d.cat))];
 
 export function attrsOf(c) {
@@ -548,10 +596,10 @@ export function attrsOf(c) {
 // Geometrie mit Cache pro Bauteil
 const geoCache = new WeakMap();
 export function geoOf(c) {
-  const key = c.type + JSON.stringify(c.attrs);
+  const key = c.type + JSON.stringify(c.attrs) + (c.type === 'Sub' ? c.sub + '#' + libVersion() : '');
   const cached = geoCache.get(c);
   if (cached && cached.key === key) return cached.g;
-  const g = DEF[c.type].geo(attrsOf(c));
+  const g = DEF[c.type].geo(attrsOf(c), c);
   geoCache.set(c, { key, g });
   return g;
 }

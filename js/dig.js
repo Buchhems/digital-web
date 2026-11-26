@@ -3,10 +3,10 @@ import { Circuit } from './circuit.js';
 import { DEF } from './components.js';
 
 const TYPES = {
-  Inputs: 'int', Bits: 'int', 'Selector Bits': 'int', Frequency: 'int', splitterSpreading: 'int',
+  Inputs: 'int', Bits: 'int', Width: 'int', 'Selector Bits': 'int', Frequency: 'int', splitterSpreading: 'int',
   Value: 'long',
   wideShape: 'boolean', flipSelPos: 'boolean', runRealTime: 'boolean', withEnable: 'boolean', ActiveLow: 'boolean',
-  Label: 'string', NetName: 'string', Description: 'string', 'Input Splitting': 'string', 'Output Splitting': 'string',
+  Label: 'string', NetName: 'string', Description: 'string', Testdata: 'testData', 'Input Splitting': 'string', 'Output Splitting': 'string',
   Color: 'awt-color', intFormat: 'intFormat', inverterConfig: 'inverterConfig', InDefault: 'value',
 };
 
@@ -38,10 +38,12 @@ export function parseDig(text) {
       if (val === undefined || !(key in TYPES)) { raw.push(ser.serializeToString(entry)); continue; }
       attrs[key] = val;
     }
-    let type = name;
-    if (!DEF[name]) { unknown.add(name); type = 'Unknown'; attrs.elementName = name; }
+    let type = name, sub = null;
+    if (/\.dig$/i.test(name)) { type = 'Sub'; sub = subName(name); }
+    else if (!DEF[name]) { unknown.add(name); type = 'Unknown'; attrs.elementName = name; }
     const comp = c.addComp(type, x, y, attrs, rotation);
     if (raw.length) comp.raw = raw;
+    if (sub) comp.sub = sub;
   }
   const wires = [...root.children].find(e => e.nodeName === 'wires');
   for (const w of wires ? [...wires.children] : []) {
@@ -63,6 +65,7 @@ function readValue(v) {
     }
     case 'inverterConfig': return [...v.children].map(s => s.textContent);
     case 'value': return Number(v.getAttribute('v') || 0);
+    case 'testData': return v.querySelector('dataString')?.textContent ?? '';
     default: return undefined;
   }
 }
@@ -79,6 +82,7 @@ function writeValue(key, val) {
     case 'awt-color': return `<awt-color>\n          <red>${val.r}</red>\n          <green>${val.g}</green>\n          <blue>${val.b}</blue>\n          <alpha>255</alpha>\n        </awt-color>`;
     case 'inverterConfig': return `<inverterConfig>${val.map(s => `<string>${esc(s)}</string>`).join('')}</inverterConfig>`;
     case 'value': return `<value v="${Math.round(val)}" z="false"/>`;
+    case 'testData': return `<testData>\n          <dataString>${esc(val)}</dataString>\n        </testData>`;
     default: return null;
   }
 }
@@ -89,7 +93,7 @@ export function writeDig(circuit) {
   L.push('  <visualElements>');
   for (const c of circuit.comps) {
     const def = DEF[c.type];
-    const name = c.type === 'Unknown' ? c.attrs.elementName : c.type;
+    const name = c.type === 'Unknown' ? c.attrs.elementName : c.type === 'Sub' ? c.sub + '.dig' : c.type;
     L.push('    <visualElement>', `      <elementName>${esc(name)}</elementName>`);
     const entries = [];
     if (c.rot) entries.push(`      <entry>\n        <string>rotation</string>\n        <rotation rotation="${c.rot}"/>\n      </entry>`);
@@ -111,3 +115,6 @@ export function writeDig(circuit) {
   return L.join('\n');
 }
 
+
+// "pfad/Halbaddierer.dig" -> "Halbaddierer"
+export const subName = n => n.split(/[\\/]/).pop().replace(/\.dig$/i, '');

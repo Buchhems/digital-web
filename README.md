@@ -10,8 +10,12 @@ liest und schreibt dessen `.dig`-Dateien.
 - **Schaltzeichen nach DIN EN 60617** (&, ≥1, =1, 1 mit Negationskreis). Die amerikanischen IEEE-Symbole lassen sich optional einschalten.
 - **Bauteile:** Ein-/Ausgänge (auch mehrbittig), LED, Taster, Takt, Konstante, Masse/Versorgung, Messwert, 7-Segment-Anzeigen, UND/ODER/NICHT/NAND/NOR/XOR/XNOR (2–16 Eingänge, Eingänge negierbar), Tunnel, Splitter, Multiplexer, Demultiplexer, Decoder, RS-, JK-, D- und T-Flipflop, Addierer, Komparator, Zähler, Register, Text
 - **Simulation** mit Farbcodierung der Leitungen (hellgrün = 1, dunkelgrün = 0, blau = offen, rot = Fehler). Sie erkennt Kurzschlüsse, falsche Bitbreiten und schwingende Schaltungen.
-- **Wahrheitstabelle** per Knopfdruck, inklusive disjunktiver Minimalform (DMF, Quine-McCluskey)
-- **Dateien:** Automatische Sicherung im Browser. Export als `.dig` (zum Teilen oder für das Desktop-Programm Digital) oder als PNG. Import von `.dig`-Dateien.
+- **Wahrheitstabelle** per Knopfdruck mit **Zwischenschritten**: Beschriftete Gatter (z. B. „Z1“) erscheinen als eigene Spalten, wahlweise auch alle Gatter. Dazu kommen die **disjunktive Minimalform (DMF)** mit Negation als Überstrich und **KV-Diagramme** mit farbig markierten Primimplikanten.
+- **Schaltungssynthese:** Schaltung aus der DMF oder aus einer eingegebenen Formel erzeugen (z. B. `Y = ¬(A ∧ B) ∨ C`).
+- **Eigene Bausteine (Teilschaltungen):** Ein Projekt kann mehrere Schaltungen enthalten, und jede lässt sich in den anderen als Baustein einsetzen. Die Anschlüsse sind die beschrifteten Ein- und Ausgänge, wie in Digital.
+- **Messgraph:** Zeitdiagramm aller Ein- und Ausgänge während der Simulation. Die Taktfrequenz ist auch während der Simulation einstellbar.
+- **Testfälle** im Format von Digital (Bauteil „Testfall“). Ergebnis mit Markierung falscher Zeilen.
+- **Dateien:** Automatische Sicherung im Browser. Export als `.dig` (bei Bausteinen mehrere Dateien bzw. ZIP) oder PNG. Import von `.dig`- und `.zip`-Dateien, auch mehrere gleichzeitig.
 - **Offline-fähig (PWA):** In Safari über *Teilen → Zum Home-Bildschirm* wie eine App installierbar
 
 ## Veröffentlichen mit GitHub Pages
@@ -45,7 +49,13 @@ python3 -m http.server 8000
 | `js/sim.js` | Ereignisgesteuerter Simulator |
 | `js/editor.js` | Zeichenfläche und Touch-Bedienung |
 | `js/dig.js` | Import und Export des `.dig`-Formats |
-| `js/analysis.js` | Wahrheitstabelle, Minimierung |
+| `js/analysis.js` | Wahrheitstabelle, Zwischenschritte, Minimierung (Quine-McCluskey) |
+| `js/kv.js` | KV-Diagramme |
+| `js/synth.js` | Formel-Parser, Darstellung, Schaltungsaufbau |
+| `js/graph.js` | Messgraph |
+| `js/testcase.js` | Testfälle |
+| `js/lib.js` | Projekt-Bibliothek für Bausteine |
+| `js/zip.js` | ZIP lesen/schreiben |
 | `js/app.js` | Oberfläche, Dialoge, Speichern |
 | `js/examples.js` | Beispielschaltungen |
 

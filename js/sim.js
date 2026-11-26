@@ -5,11 +5,11 @@ import { buildNets } from './circuit.js';
 export class Sim {
   constructor(circuit) {
     this.circuit = circuit;
-    const { nets, compPins, wireNet } = buildNets(circuit);
+    const { nets, compPins, wireNet, comps, problems } = buildNets(circuit);
     this.nets = nets; this.wireNet = wireNet;
     this.state = new Map();
-    this.errors = [];
-    this.comps = circuit.comps.filter(c => c.type !== 'Unknown' && c.type !== 'Text');
+    this.errors = [...new Set(problems)];
+    this.comps = comps;
     for (const c of this.comps) {
       const cp = compPins.get(c.id);
       const st = { inNets: cp.ins, outNets: cp.outs, outs: cp.outs.map(() => null), ins: cp.ins.map(() => null), bits: cp.ins.map(n => nets[n].bits) };

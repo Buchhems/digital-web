@@ -1,0 +1,166 @@
+// Datenmodell der Schaltung und Netzbildung
+import { DEF, pinsWorld, attrsOf } from './components.js';
+
+let nextId = 1;
+export const newId = () => nextId++;
+
+export class Circuit {
+  constructor() {
+    this.comps = []; // {id,type,x,y,rot,attrs,raw?}
+    this.wires = []; // {id,x1,y1,x2,y2}
+    this.digAttributes = null; // rohe <attributes> aus .dig
+  }
+  addComp(type, x, y, attrs = {}, rot = 0) {
+    const c = { id: newId(), type, x, y, rot, attrs: { ...attrs } };
+    this.comps.push(c);
+    return c;
+  }
+  addWire(x1, y1, x2, y2) {
+    if (x1 === x2 && y1 === y2) return null;
+    const w = { id: newId(), x1, y1, x2, y2 };
+    this.wires.push(w);
+    return w;
+  }
+  toJSON() {
+    return {
+      comps: this.comps.map(({ type, x, y, rot, attrs, raw }) => ({ type, x, y, rot, attrs, ...(raw ? { raw } : {}) })),
+      wires: this.wires.map(w => [w.x1, w.y1, w.x2, w.y2]),
+      digAttributes: this.digAttributes,
+    };
+  }
+  static fromJSON(j) {
+    const c = new Circuit();
+    for (const k of j.comps || []) {
+      if (!DEF[k.type]) continue;
+      const comp = c.addComp(k.type, k.x, k.y, k.attrs || {}, k.rot || 0);
+      if (k.raw) comp.raw = k.raw;
+    }
+    for (const w of j.wires || []) c.addWire(...w);
+    c.digAttributes = j.digAttributes || null;
+    return c;
+  }
+  // Drähte aufräumen: Länge 0 und Duplikate entfernen, kollineare Stücke zusammenfassen
+  cleanup() {
+    const seen = new Set();
+    this.wires = this.wires.filter(w => {
+      if (w.x1 === w.x2 && w.y1 === w.y2) return false;
+      const a = `${w.x1},${w.y1}`, b = `${w.x2},${w.y2}`;
+      const k = a < b ? a + '|' + b : b + '|' + a;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    // Leitungen entfernen, die vollständig in einer anderen liegen
+    const inside = (x, y, w) => onSegment(x, y, w) || (x === w.x1 && y === w.y1) || (x === w.x2 && y === w.y2);
+    this.wires = this.wires.filter(a => !this.wires.some(b => b !== a && inside(a.x1, a.y1, b) && inside(a.x2, a.y2, b)
+      && (b.x2 - b.x1) ** 2 + (b.y2 - b.y1) ** 2 > (a.x2 - a.x1) ** 2 + (a.y2 - a.y1) ** 2));
+    // Zusammenfassen gerader Stücke, wenn am Verbindungspunkt sonst nichts hängt
+    const pinPts = new Set();
+    for (const c of this.comps) for (const p of pinsWorld(c)) pinPts.add(p.x + ',' + p.y);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      const ends = new Map();
+      for (const w of this.wires) for (const [x, y] of [[w.x1, w.y1], [w.x2, w.y2]]) {
+        const k = x + ',' + y; if (!ends.has(k)) ends.set(k, []); ends.get(k).push(w);
+      }
+      for (const [k, ws] of ends) {
+        if (ws.length !== 2 || pinPts.has(k)) continue;
+        const [a, b] = ws;
+        const [px, py] = k.split(',').map(Number);
+        if (this.wires.some(w => w !== a && w !== b && onSegment(px, py, w))) continue;
+        const oa = a.x1 === px && a.y1 === py ? [a.x2, a.y2] : [a.x1, a.y1];
+        const ob = b.x1 === px && b.y1 === py ? [b.x2, b.y2] : [b.x1, b.y1];
+        const cross = (oa[0] - px) * (ob[1] - py) - (oa[1] - py) * (ob[0] - px);
+        const dot = (oa[0] - px) * (ob[0] - px) + (oa[1] - py) * (ob[1] - py);
+        if (cross !== 0 || dot >= 0) continue;
+        a.x1 = oa[0]; a.y1 = oa[1]; a.x2 = ob[0]; a.y2 = ob[1];
+        this.wires = this.wires.filter(w => w !== b);
+        changed = true;
+        break;
+      }
+    }
+  }
+}
+
+// Liegt (x,y) echt im Inneren des Drahtes w?
+export function onSegment(x, y, w) {
+  if ((x === w.x1 && y === w.y1) || (x === w.x2 && y === w.y2)) return false;
+  const dx = w.x2 - w.x1, dy = w.y2 - w.y1;
+  if ((x - w.x1) * dy - (y - w.y1) * dx !== 0) return false;
+  const t = (x - w.x1) * dx + (y - w.y1) * dy;
+  return t > 0 && t < dx * dx + dy * dy;
+}
+
+class UF {
+  constructor() { this.p = new Map(); }
+  find(a) {
+    if (!this.p.has(a)) this.p.set(a, a);
+    let r = a; while (this.p.get(r) !== r) r = this.p.get(r);
+    let x = a; while (this.p.get(x) !== r) { const n = this.p.get(x); this.p.set(x, r); x = n; }
+    return r;
+  }
+  union(a, b) { const ra = this.find(a), rb = this.find(b); if (ra !== rb) this.p.set(ra, rb); }
+}
+
+// Netze bilden: liefert {nets, compPins: Map(id -> {ins:[net], outs:[net]}), wireNet: Map(wireId -> net)}
+export function buildNets(circuit) {
+  const uf = new UF();
+  const pk = (x, y) => 'p' + x + ',' + y;
+  const wires = circuit.wires;
+  for (const w of wires) { uf.union('w' + w.id, pk(w.x1, w.y1)); uf.union('w' + w.id, pk(w.x2, w.y2)); }
+  const pts = new Map();
+  for (const w of wires) { pts.set(pk(w.x1, w.y1), [w.x1, w.y1]); pts.set(pk(w.x2, w.y2), [w.x2, w.y2]); }
+  const allPins = [];
+  for (const c of circuit.comps) {
+    const a = attrsOf(c);
+    for (const p of pinsWorld(c)) {
+      allPins.push({ c, p });
+      pts.set(pk(p.x, p.y), [p.x, p.y]);
+      if (p.tunnel) uf.union(pk(p.x, p.y), 'T:' + a.NetName);
+    }
+  }
+  // T-Verbindungen: Drahtende liegt im Inneren eines anderen Drahtes.
+  // (Anschlüsse verbinden nur, wenn eine Leitung dort endet – wie in Digital.)
+  for (const v of wires) for (const [x, y] of [[v.x1, v.y1], [v.x2, v.y2]])
+    for (const w of wires) if (w !== v && onSegment(x, y, w)) uf.union(pk(x, y), 'w' + w.id);
+
+  const netIndex = new Map();
+  const nets = [];
+  const getNet = key => {
+    const r = uf.find(key);
+    if (!netIndex.has(r)) { netIndex.set(r, nets.length); nets.push({ id: nets.length, bits: 0, bitSet: new Set(), drivers: [], readers: [], value: null, error: null, wires: [] }); }
+    return netIndex.get(r);
+  };
+  const compPins = new Map();
+  for (const c of circuit.comps) compPins.set(c.id, { ins: [], outs: [] });
+  for (const { c, p } of allPins) {
+    const n = getNet(pk(p.x, p.y));
+    const net = nets[n];
+    const cp = compPins.get(c.id);
+    if (p.bits) { net.bitSet.add(p.bits); net.bits = Math.max(net.bits, p.bits); }
+    if (p.out) { net.drivers.push({ c, i: cp.outs.length }); cp.outs.push(n); }
+    else { net.readers.push({ c, i: cp.ins.length }); cp.ins.push(n); }
+  }
+  const wireNet = new Map();
+  for (const w of wires) { const n = getNet('w' + w.id); wireNet.set(w.id, n); nets[n].wires.push(w); }
+  for (const net of nets) {
+    if (!net.bits) net.bits = 1;
+    if (net.bitSet.size > 1) net.error = 'bits';
+  }
+  return { nets, compPins, wireNet };
+}
+
+// Verbindungspunkte (für die Punkte an Abzweigungen)
+export function junctions(circuit) {
+  const cnt = new Map();
+  const add = (x, y) => { const k = x + ',' + y; cnt.set(k, (cnt.get(k) || 0) + 1); };
+  for (const w of circuit.wires) { add(w.x1, w.y1); add(w.x2, w.y2); }
+  const res = [];
+  for (const [k, n] of cnt) {
+    const [x, y] = k.split(',').map(Number);
+    const inner = circuit.wires.some(w => onSegment(x, y, w));
+    if (n >= 3 || (inner && n >= 1)) res.push([x, y]);
+  }
+  return res;
+}

@@ -50,7 +50,8 @@ body.sim .edit-only { display: none !important; }
 
 /* ---------- Hauptbereich ---------- */
 main { flex: 1; display: flex; min-height: 0; position: relative; }
-#stage { flex: 1; position: relative; min-width: 0; }
+#stage { flex: 1; position: relative; min-width: 0; display: flex; }
+#canvasWrap { flex: 1; position: relative; min-width: 0; min-height: 0; }
 #canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; }
 
 #palette {
@@ -216,7 +217,8 @@ textarea.formula { font: 22px/1.6 -apple-system, "Segoe UI", sans-serif !importa
 .ov-key .ov { text-decoration-thickness: 2px; }
 
 /* Übung / Tabellen-Editor */
-.tt-switches { display: flex; gap: 22px; flex-wrap: wrap; }
+.tt-switches { display: flex; gap: 4px 22px; flex-wrap: wrap; margin-bottom: 6px; }
+.tt-switches .tt-switch { margin-bottom: 0; }
 .cellbtn { width: 44px; height: 36px; border-radius: 8px; border: 1.5px dashed #c7cbd3; background: #fff; font: 700 16px -apple-system, sans-serif; cursor: pointer; }
 .cellbtn.right { border: 2px solid var(--green); background: #f0fdf4; color: var(--green); }
 .cellbtn.wrong { border: 2px solid var(--red); background: #fef2f2; color: var(--red); }
@@ -255,3 +257,18 @@ table.tt th.exc, table.tt td.exc { background: #fff7ed; }
 .formula-in { font-size: 20px !important; }
 .help-list { padding-left: 18px; font-size: 13.5px; color: #374151; line-height: 1.45; }
 @media (max-width: 900px) { #fsmSide { width: 240px; } .fsm-bar input { width: 80px; } }
+
+/* Angedockte Wahrheitstabelle / Schaltwerk-Analyse */
+#tablePanel { display: none; flex: none; width: min(52%, 640px); background: var(--panel); border-left: 1px solid var(--line); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+#tablePanel.open { display: block; }
+#tablePanel .dialog { padding: 14px 16px 30px; }
+#tablePanel .dialog h2 { font-size: 17px; }
+#tablePanel .tt-wrap { max-height: none; }
+#tablePanel .tt-switch { max-width: none; }
+@media (orientation: portrait) {
+  #stage { flex-direction: column; }
+  #tablePanel { width: auto; height: 52%; border-left: none; border-top: 1px solid var(--line); }
+}
+.dialog.menu h3 { margin-top: 18px; }
+.dialog.menu h3:first-of-type { margin-top: 4px; }
+.h3-sub { text-transform: none; letter-spacing: 0; font-weight: 400; color: #9ca3af; margin-left: 6px; }

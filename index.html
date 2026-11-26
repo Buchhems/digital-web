@@ -16,7 +16,7 @@
 </head>
 <body>
   <header id="topbar">
-    <button class="tb" id="btnMenu" title="Datei"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Datei</span></button>
+    <button class="tb" id="btnMenu" title="Datei"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Menü</span></button>
     <button class="tb" id="btnBack" hidden title="Zurück"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg><span id="backLabel"></span></button>
     <button class="title" id="btnDocs" title="Schaltungen im Projekt"><span id="docCount">Projekt</span><b id="fileName">Schaltung</b></button>
     <div class="group edit-only">
@@ -40,21 +40,24 @@
   <main>
     <aside id="palette" class="edit-only"></aside>
     <div id="stage">
-      <canvas id="canvas"></canvas>
-      <div id="hint">
-        <h2>Willkommen!</h2>
-        <p>Tippe links auf ein Bauteil oder ziehe es auf die Fläche.</p>
-        <p>Ziehe von einem <b>Anschlusspunkt</b> aus, um eine Leitung zu zeichnen.</p>
-        <p>Mit <b>Start</b> wird simuliert – dann schaltest du Eingänge durch Antippen.</p>
-        <button class="btn" id="btnExample">Beispiel öffnen</button>
+      <div id="canvasWrap">
+        <canvas id="canvas"></canvas>
+        <div id="hint">
+          <h2>Willkommen!</h2>
+          <p>Tippe links auf ein Bauteil oder ziehe es auf die Fläche.</p>
+          <p>Ziehe von einem <b>Anschlusspunkt</b> aus, um eine Leitung zu zeichnen.</p>
+          <p>Mit <b>Start</b> wird simuliert – dann schaltest du Eingänge durch Antippen.</p>
+          <button class="btn" id="btnExample">Beispiel öffnen</button>
+        </div>
+        <div id="zoom">
+          <button id="zoomIn" title="Vergrößern">+</button>
+          <button id="zoomOut" title="Verkleinern">−</button>
+          <button id="zoomFit" title="Alles anzeigen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        </div>
+        <div id="simBadge">Simulation läuft – Schalter antippen</div>
+        <div id="graph"><div class="graph-head"><b>Messgraph</b><span class="spacer"></span><button class="btn small" id="graphClear">Leeren</button><button class="btn small" id="graphClose">Schließen</button></div><canvas id="graphCanvas"></canvas></div>
       </div>
-      <div id="zoom">
-        <button id="zoomIn" title="Vergrößern">+</button>
-        <button id="zoomOut" title="Verkleinern">−</button>
-        <button id="zoomFit" title="Alles anzeigen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
-      </div>
-      <div id="simBadge">Simulation läuft – Schalter antippen</div>
-      <div id="graph"><div class="graph-head"><b>Messgraph</b><span class="spacer"></span><button class="btn small" id="graphClear">Leeren</button><button class="btn small" id="graphClose">Schließen</button></div><canvas id="graphCanvas"></canvas></div>
+      <aside id="tablePanel"></aside>
     </div>
     <aside id="props"></aside>
   </main>

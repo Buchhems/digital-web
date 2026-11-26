@@ -1,5 +1,5 @@
 // Offline-Cache: zuerst Netz, sonst Cache (so kommen Updates sofort an)
-const CACHE = 'digital-web-v7';
+const CACHE = 'digital-web-v8';
 const FILES = ['./', 'index.html', 'style.css', 'manifest.webmanifest', 'icons/icon.svg', 'icons/icon-180.png', 'icons/icon-192.png',
   'js/app.js', 'js/components.js', 'js/circuit.js', 'js/sim.js', 'js/editor.js', 'js/dig.js', 'js/analysis.js', 'js/examples.js', 'js/lib.js', 'js/kv.js', 'js/synth.js', 'js/graph.js', 'js/testcase.js', 'js/zip.js', 'js/seq.js', 'js/fsmeditor.js'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });

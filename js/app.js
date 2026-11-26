@@ -17,7 +17,7 @@ import { EXAMPLES } from './examples.js';
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const STORE = 'digitalweb.v1';
-const VERSION = 'Version 6 · 26.11.2026';
+const VERSION = 'Version 7 · 26.11.2026';
 
 // ---------- Zustand ----------
 // Ein Projekt besteht aus mehreren Schaltungen (library). Jede kann in den anderen als Baustein dienen.
@@ -50,6 +50,7 @@ function commit() {
   touchLibrary();
   autosave(); updateUI();
   editor.invalidate();
+  refreshPanel();
 }
 function loadSnapshot(s) {
   circuit = Circuit.fromJSON(JSON.parse(s));
@@ -77,6 +78,7 @@ function setCurrent(name, { fit = true, keepNav = false } = {}) {
   editor.setCircuit(circuit);
   history = [snapshot()]; hIdx = 0;
   buildPalette(); autosave(); updateUI(); renderProps();
+  if (panelOpen()) { fillAnswers.clear(); showTable.combinational = false; panelFn ? panelFn(true) : closePanel(); }
   if (fit) requestAnimationFrame(() => editor.fit());
 }
 function addDoc(name, c, open = true) {
@@ -433,6 +435,30 @@ function openDialog(html, wide = false) {
 function closeDialog() { $('#modal').classList.add('hidden'); $('#sheet').innerHTML = ''; }
 $('#modal').addEventListener('pointerdown', e => { if (e.target.id === 'modal') closeDialog(); });
 
+// Angedocktes Panel neben der Schaltung (Wahrheitstabelle, Schaltwerk-Analyse)
+let panelFn = null;
+function openPanel(html, fn) {
+  const p = $('#tablePanel');
+  const wasOpen = p.classList.contains('open');
+  const scroll = p.scrollTop;
+  p.innerHTML = html;
+  p.classList.add('open');
+  panelFn = fn;
+  p.querySelectorAll('.close').forEach(b => (b.onclick = closePanel));
+  if (wasOpen) p.scrollTop = scroll;
+  else requestAnimationFrame(() => { editor.resize(); editor.fit(); });
+  return p;
+}
+function closePanel() {
+  const p = $('#tablePanel');
+  if (!p.classList.contains('open')) return;
+  p.classList.remove('open'); p.innerHTML = ''; panelFn = null;
+  requestAnimationFrame(() => { editor.resize(); editor.fit(); });
+}
+const panelOpen = () => $('#tablePanel').classList.contains('open');
+// nach Änderungen an der Schaltung neu berechnen (nicht im Übungsmodus, damit Eingaben bleiben)
+function refreshPanel() { if (panelOpen() && panelFn && !tableFill) panelFn(true); }
+
 function inputDialog(title, value, okLabel, onOk) {
   openDialog(`<div class="dialog"><h2>${esc(title)} <button class="close">✕</button></h2>
     <div class="field"><input type="text" id="dlgIn" value="${esc(value)}"></div>
@@ -480,24 +506,29 @@ function showDocs() {
 }
 
 function showMenu() {
+  const item = (a, ico, title, sub) => `<button class="menu-item" data-a="${a}"><span class="ico">${ico}</span><span><b>${title}</b><small>${sub}</small></span></button>`;
   const ex = EXAMPLES.map((e, i) => `<button class="menu-item" data-ex="${i}"><span class="ico">⚡</span><span><b>${e.name}</b><small>${e.desc}</small></span></button>`).join('');
-  openDialog(`<div class="dialog"><h2>Datei <button class="close">✕</button></h2>
-    <div class="menu-list">
-      <button class="menu-item" data-a="new"><span class="ico">＋</span><span><b>Neue Schaltung</b><small>Im selben Projekt – andere bleiben als Bausteine</small></span></button>
-      <button class="menu-item" data-a="docs"><span class="ico">🗂</span><span><b>Schaltungen im Projekt</b><small>Wechseln, umbenennen, löschen</small></span></button>
-      <button class="menu-item" data-a="open"><span class="ico">📂</span><span><b>Öffnen …</b><small>.dig- oder .zip-Dateien (auch mehrere)</small></span></button>
-      <button class="menu-item" data-a="save"><span class="ico">💾</span><span><b>Speichern …</b><small>Als .dig sichern oder teilen</small></span></button>
-      <button class="menu-item" data-a="formula"><span class="ico">ƒ</span><span><b>Schaltung aus Formel</b><small>Booleschen Ausdruck eingeben</small></span></button>
-      <button class="menu-item" data-a="ttedit"><span class="ico">▦</span><span><b>Wahrheitstabelle eingeben</b><small>Mit X (don't care) → DMF, KV, Schaltung</small></span></button>
-      <button class="menu-item" data-a="fsm"><span class="ico">⟳</span><span><b>Automaten-Editor</b><small>Zustandsdiagramm → Schaltwerk</small></span></button>
-      <button class="menu-item" data-a="png"><span class="ico">🖼</span><span><b>Als Bild</b><small>PNG der aktuellen Ansicht</small></span></button>
-      <button class="menu-item" data-a="newproj"><span class="ico">🗑</span><span><b>Neues Projekt</b><small>Alle Schaltungen schließen</small></span></button>
+  openDialog(`<div class="dialog menu"><h2>Menü <button class="close">✕</button></h2>
+    <h3>Datei</h3><div class="menu-list">
+      ${item('open', '📂', 'Öffnen …', '.dig- oder .zip-Dateien, auch mehrere')}
+      ${item('save', '💾', 'Speichern …', 'Als .dig sichern oder teilen')}
+      ${item('png', '🖼', 'Als Bild', 'PNG der aktuellen Ansicht')}
+    </div>
+    <h3>Projekt <span class="h3-sub">„${esc(current)}“ · ${library.size} Schaltung${library.size > 1 ? 'en' : ''}</span></h3><div class="menu-list">
+      ${item('new', '＋', 'Neue Schaltung', 'Im Projekt – nutzbar als Baustein')}
+      ${item('docs', '🗂', 'Schaltungen verwalten', 'Wechseln, umbenennen, löschen')}
+      ${item('newproj', '🗑', 'Neues Projekt', 'Alle Schaltungen schließen')}
+    </div>
+    <h3>Schaltung erzeugen aus …</h3><div class="menu-list">
+      ${item('formula', 'ƒ', 'Formel', 'Booleschen Ausdruck eingeben')}
+      ${item('ttedit', '▦', 'Wahrheitstabelle', 'Werte eintragen, auch X')}
+      ${item('fsm', '⟳', 'Automat', 'Zustandsdiagramm zeichnen')}
     </div>
     <h3>Beispiele</h3><div class="menu-list">${ex}</div>
-    <h3>Einstellungen</h3>
-    <div class="row"><span style="font-size:15px">Schaltzeichen:</span>
+    <h3>Einstellungen &amp; Hilfe</h3>
+    <div class="row" style="margin-bottom:10px"><span style="font-size:15px">Schaltzeichen:</span>
       <div class="chips"><button class="chip ${settings.shapes !== 'ieee' ? 'on' : ''}" data-shape="iec">DIN / IEC (&amp;, ≥1)</button><button class="chip ${settings.shapes === 'ieee' ? 'on' : ''}" data-shape="ieee">IEEE (amerikanisch)</button></div></div>
-    <h3>Hilfe</h3><div class="menu-list"><button class="menu-item" data-a="help"><span class="ico">？</span><span><b>Bedienung</b><small>So funktioniert's auf dem iPad</small></span></button></div>
+    <div class="menu-list">${item('help', '？', 'Bedienung', "So funktioniert's auf dem iPad")}</div>
     <p class="muted" style="margin-top:16px">Digital Web · ${VERSION}</p>
   </div>`);
   $('#sheet').onclick = e => {
@@ -617,11 +648,13 @@ let fillAnswers = new Map();
 const exprHTML = e => toHTML(termsToAST(e.terms, e.vars.length, e.vars));
 const exprText = e => toText(termsToAST(e.terms, e.vars.length, e.vars));
 
-function showTable() {
-  if (circuit.comps.some(c => ['D_FF', 'JK_FF', 'T_FF', 'RS_FF'].includes(c.type)) && !showTable.combinational) return showStateAnalysis();
-  showTable.combinational = false;
+const panelMsg = (title, msg) => openPanel(`<div class="dialog"><h2>${title} <button class="close">✕</button></h2><p class="muted">${esc(msg)}</p></div>`, showTable);
+function showTable(refresh = false) {
+  const seq = circuit.comps.some(c => ['D_FF', 'JK_FF', 'T_FF', 'RS_FF'].includes(c.type));
+  if (seq && !showTable.combinational) return showStateAnalysis(refresh);
+  if (!seq) showTable.combinational = false;
   let t;
-  try { t = truthTable(circuit, { allGates: tableAllGates }); } catch (e) { toast(e.message, true); return; }
+  try { t = truthTable(circuit, { allGates: tableAllGates }); } catch (e) { if (refresh || panelOpen()) panelMsg('Wahrheitstabelle', e.message); else toast(e.message, true); return; }
   const cols = [
     ...t.inputs.map(c => ({ ...c, kind: 'in' })),
     ...t.steps.map((c, j) => ({ ...c, kind: 'step', first: j === 0 })),
@@ -642,22 +675,22 @@ function showTable() {
     + (t.stepExpressions?.length ? '<details class="steps-dmf"><summary>DMF der Zwischenschritte</summary>' + exprList(t.stepExpressions) + '</details>' : '') : '';
   const hasGates = circuit.comps.some(c => GATE_TYPES.includes(c.type) || c.type === 'Sub');
   const kvOk = !tableFill && t.expressions?.some(e => e.vars.length >= 2 && e.vars.length <= 4);
-  openDialog(`<div class="dialog"><h2>Wahrheitstabelle <button class="close">✕</button></h2>
+  const root = openPanel(`<div class="dialog"><h2>Wahrheitstabelle <button class="close">✕</button></h2>
     ${t.sequential ? '<div class="note">Die Schaltung enthält Speicherglieder oder Takte. Die Tabelle zeigt nur das Verhalten ausgehend vom aktuellen Zustand.</div>' : ''}
     ${t.oscillating ? '<div class="note">Die Schaltung schwingt – die Werte sind nicht zuverlässig.</div>' : ''}
     <div class="tt-switches">
     ${hasGates ? `<label class="switch tt-switch"><span>Alle Gatter und Bausteine als Zwischenschritte</span><input type="checkbox" id="ttAll" ${tableAllGates ? 'checked' : ''}></label>` : ''}
     <label class="switch tt-switch"><span>Übung: selbst ausfüllen</span><input type="checkbox" id="ttFill" ${tableFill ? 'checked' : ''}></label></div>
-    ${tableFill ? '<p class="muted">Tippe in die leeren Felder (0 ↔ 1) und dann auf „Prüfen“.</p>' : ''}
+    ${tableFill ? '<p class="muted">Lies die Schaltung ab und tippe in die leeren Felder (0 → 1 → leer). Dann „Prüfen“.</p>' : ''}
     <div class="tt-wrap"><table class="tt ${tableFill ? 'fill' : ''}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
     <p class="tt-hint">${t.steps.length ? '<span class="legend step"></span> Zwischenschritte' + (t.steps.some(s => s.auto) ? ' (* = automatisch benannt, von links nach rechts)' : '') + ' · ' : ''}Tipp: Gib einem Gatter oder Baustein eine <b>Beschriftung</b> (z. B. Z1 oder HA1), dann erscheint es hier als Zwischenschritt.</p>
     ${expr}
-    <div class="row" style="margin-top:14px">${tableFill ? '<button class="btn primary" id="ttCheck">Prüfen</button><button class="btn" id="ttReset">Leeren</button><span id="ttScore" class="score"></span>' : `<button class="btn" id="copyCsv">Als Tabelle kopieren</button>${kvOk ? '<button class="btn" id="showKV">KV-Diagramm</button>' : ''}${t.expressions?.length ? '<button class="btn" id="buildDMF">Schaltung aus DMF erzeugen</button>' : ''}`}</div></div>`, true);
+    <div class="row" style="margin-top:14px">${tableFill ? '<button class="btn primary" id="ttCheck">Prüfen</button><button class="btn" id="ttReset">Leeren</button><span id="ttScore" class="score"></span>' : `<button class="btn" id="copyCsv">Als Tabelle kopieren</button>${kvOk ? '<button class="btn" id="showKV">KV-Diagramm</button>' : ''}${t.expressions?.length ? '<button class="btn" id="buildDMF">Schaltung aus DMF erzeugen</button>' : ''}`}</div></div>`, showTable);
   const allSw = $('#ttAll');
   if (allSw) allSw.onchange = () => { tableAllGates = allSw.checked; fillAnswers.clear(); showTable(); };
   $('#ttFill').onchange = e => { tableFill = e.target.checked; fillAnswers.clear(); showTable(); };
   if (tableFill) {
-    $('#sheet').querySelector('table').onclick = e => {
+    root.querySelector('table').onclick = e => {
       const b = e.target.closest('.cellbtn'); if (!b) return;
       const cur = fillAnswers.get(b.dataset.cell);
       const bits = +b.dataset.bits;
@@ -669,7 +702,7 @@ function showTable() {
     };
     $('#ttCheck').onclick = () => {
       let right = 0, total = 0;
-      $('#sheet').querySelectorAll('.cellbtn').forEach(b => {
+      root.querySelectorAll('.cellbtn').forEach(b => {
         const [ri, ci] = b.dataset.cell.split(':').map(Number);
         const v = all(t.rows[ri])[ci], c = cols[ci];
         const exp = v == null ? 'Z' : formatValue(v, c.bits);
@@ -705,7 +738,7 @@ function showKV(exprs, back) {
     <p class="muted">Die farbigen Blöcke sind die Primimplikanten der disjunktiven Minimalform. X = beliebig (don't care). Kleine Zahlen = Zeilennummer in der Wahrheitstabelle.</p>
     <div class="kv-grid">${blocks || '<p class="muted">KV-Diagramme gibt es für 2 bis 4 Eingänge.</p>'}</div>
     <div class="row" style="margin-top:12px"><button class="btn" id="kvBack">← Zurück</button></div></div>`, true);
-  $('#kvBack').onclick = back;
+  $('#kvBack').onclick = () => { closeDialog(); back(); };
 }
 
 // ---------- Wahrheitstabelle selbst eingeben ----------
@@ -755,9 +788,9 @@ function showTTEditor() {
 }
 
 // ---------- Schaltwerk-Analyse ----------
-function showStateAnalysis() {
+function showStateAnalysis(refresh = false) {
   let a;
-  try { a = stateAnalysis(circuit); } catch (e) { toast(e.message, true, 4000); return; }
+  try { a = stateAnalysis(circuit); } catch (e) { if (refresh || panelOpen()) openPanel(`<div class="dialog"><h2>Schaltwerk-Analyse <button class="close">✕</button></h2><p class="muted">${esc(e.message)}</p></div>`, showStateAnalysis); else toast(e.message, true, 4000); return; }
   const k = a.states.length, code = v => v.toString(2).padStart(k, '0');
   const head = a.states.map(q => `<th class="step">${esc(q)}</th>`).join('') + a.inputs.map(x => `<th>${esc(x)}</th>`).join('')
     + a.states.map((q, i) => `<th class="step ${i ? '' : 'sepcol'}">${esc(q)}⁺</th>`).join('')
@@ -775,14 +808,14 @@ function showStateAnalysis() {
   const edges = a.rows.map(r => ({ from: r.state, to: r.next, label: (a.inputs.length ? r.inBits.join('') : '') + (!a.moore && a.outputs.length ? '/' + r.outs.join('') : '') }));
   const legend = `Zustand: ${a.states.map(esc).join('')}${a.moore && a.outputs.length ? ' · im Kreis unten: ' + a.outputs.map(esc).join('') : ''}${a.inputs.length ? ' · Pfeile: ' + a.inputs.map(esc).join('') + (!a.moore && a.outputs.length ? ' / ' + a.outputs.map(esc).join('') : '') : ''}`;
   const eq = list => list.map(e => `<div class="expr"><b>${esc(e.name)}</b> = ${exprHTML(e)}</div>`).join('');
-  openDialog(`<div class="dialog"><h2>Schaltwerk-Analyse <button class="close">✕</button></h2>
+  openPanel(`<div class="dialog"><h2>Schaltwerk-Analyse <button class="close">✕</button></h2>
     <p class="muted">${a.moore ? 'Moore-Automat' : a.outputs.length ? 'Mealy-Automat' : 'Automat'} mit ${k} Flipflop${k > 1 ? 's' : ''} (${2 ** k} Zustände). Spalten: Zustand · Eingänge · Folgezustand (⁺) · <span class="legend exc"></span> Ansteuerung der Flipflops · Ausgänge.</p>
     <div class="tt-wrap"><table class="tt"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
     <h3>Zustandsdiagramm</h3><p class="muted">${legend}</p><div class="diagram">${stateDiagramSVG(nodes, edges)}</div>
     <h3>Folgezustände (DMF)</h3>${eq(a.eqs.next)}
     <h3>Ansteuergleichungen</h3>${eq(a.eqs.exc)}
     ${a.outputs.length ? '<h3>Ausgänge</h3>' + eq(a.eqs.outs) : ''}
-    <div class="row" style="margin-top:14px"><button class="btn" id="saComb">Kombinatorische Tabelle</button></div></div>`, true);
+    <div class="row" style="margin-top:14px"><button class="btn" id="saComb">Kombinatorische Tabelle</button></div></div>`, showStateAnalysis);
   $('#saComb').onclick = () => { showTable.combinational = true; showTable(); };
 }
 
@@ -798,6 +831,7 @@ function openFsm() {
 }
 
 function buildFromDMF(t) {
+  closePanel();
   const defs = t.expressions.map(e => ({ name: e.name, ast: termsToAST(e.terms, e.vars.length, e.vars) }));
   closeDialog();
   const n = addDoc(current + ' (DMF)', buildCircuit(defs));
@@ -941,7 +975,7 @@ $('#btnRect').onclick = () => { editor.rectMode = !editor.rectMode; $('#btnRect'
 $('#btnSim').onclick = () => (editor.sim ? stopSim() : startSim());
 $('#btnStep').onclick = stepClock;
 $('#btnFreq').onclick = showFreq;
-$('#btnTable').onclick = showTable;
+$('#btnTable').onclick = () => (panelOpen() ? closePanel() : showTable());
 $('#btnTest').onclick = () => runAllTests();
 $('#btnGraph').onclick = () => toggleGraph();
 $('#graphClear').onclick = () => { if (editor.sim) { recorder.reset(circuit); recorder.sample(editor.sim); renderGraph(); } };

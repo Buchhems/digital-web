@@ -1,5 +1,5 @@
-// Automaten-Editor (Moore-Automat): Zustände und Übergänge per Touch/Stift/Maus
-import { fsmTable, fsmCircuit } from './seq.js';
+// Automaten-Editor (Moore- und Mealy-Automat): Zustände und Übergänge per Touch/Stift/Maus
+import { fsmTable, fsmCircuit, isMealy } from './seq.js';
 import { parseExpr, toHTML, toText, OV } from './synth.js';
 
 const esc = s => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -161,6 +161,8 @@ export class FsmEditor {
       s += `<path d="${d}" fill="none" stroke="transparent" stroke-width="26" data-edge="${t.id}" style="cursor:pointer"/>`;
       s += `<path d="${d}" fill="none" stroke="${stroke}" stroke-width="${sel ? 3 : 2}" marker-end="url(#${mk})" pointer-events="none"/>`;
       s += label(lx, ly, t.cond, sel);
+      const tOuts = f.outputs.filter(o => t.out?.[o]);
+      if (tOuts.length) s += `<text x="${lx}" y="${ly + 22}" text-anchor="middle" font-size="12.5" font-weight="600" fill="#b45309" stroke="#f7f7f4" stroke-width="4" paint-order="stroke" pointer-events="none">/ ${esc(tOuts.join(','))}=1</text>`;
     }
     // Zustände
     for (const st of f.states) {
@@ -208,6 +210,7 @@ export class FsmEditor {
         <div class="keys">${f.inputs.map(i => `<button class="chip" data-ins="${esc(i)}">${esc(i)}</button><button class="chip" data-ins="${esc([...i].map(c => c + OV).join(''))}"><span class="ov">${esc(i)}</span></button>`).join('')}
           <button class="chip" data-ins=" ∧ ">∧</button><button class="chip" data-ins=" ∨ ">∨</button><button class="chip" data-clear="1">leeren</button></div>
         <div class="expr" id="trPrev"></div>
+        ${f.outputs.length ? `<div class="field" style="margin-top:12px"><label>Ausgänge bei diesem Übergang (Mealy)</label><div class="chips">${f.outputs.map(o => `<button class="chip ${t.out?.[o] ? 'on' : ''}" data-to="${esc(o)}">${esc(o)} = ${t.out?.[o] ? 1 : 0}</button>`).join('')}</div><div class="hint">Gesetzte Ausgänge sind 1, solange der Automat im Ausgangszustand ist und die Bedingung erfüllt ist.</div></div>` : ''}
         <p class="muted">Leer = Übergang immer. Gibt es für eine Eingabe keinen passenden Übergang, bleibt der Automat im Zustand.</p>
         <div class="prop-actions"><button class="btn red" id="trDel" style="grid-column:span 2">Übergang löschen</button></div>`;
       const inp = side.querySelector('#trCond');
@@ -225,6 +228,7 @@ export class FsmEditor {
         else t.cond = (t.cond + b.dataset.ins).replace(/\s+/g, ' ').replace(/^\s+/, '');
         this.save(); this.render();
       };
+      side.querySelectorAll('[data-to]').forEach(b => (b.onclick = () => { t.out = t.out || {}; t.out[b.dataset.to] = t.out[b.dataset.to] ? 0 : 1; this.changed(); }));
       side.querySelector('#trDel').onclick = () => { f.trans = f.trans.filter(x => x !== t); this.sel = null; this.changed(); };
       return;
     }
@@ -236,13 +240,17 @@ export class FsmEditor {
       check = tb.problems.length ? `<div class="note">${tb.problems.map(esc).join('<br>')}</div>`
         : `<div class="ok-note">✓ Der Automat ist eindeutig.${stays ? ` In ${stays} Fällen bleibt er mangels passendem Übergang im Zustand.` : ''}</div>`;
     } catch (e) { check = `<p class="muted">${esc(e.message)}</p>`; }
-    side.innerHTML = `<h2>Moore-Automat</h2>
+    const ffT = f.ffType || 'D';
+    side.innerHTML = `<h2>${isMealy(f) ? 'Mealy' : 'Moore'}-Automat</h2>
       <p class="muted">${f.states.length} Zustände · ${f.trans.length} Übergänge</p>${check}
+      <div class="field"><label>Flipflops für die Schaltung</label><div class="chips" id="ffType">${[['D', 'D-Flipflops'], ['JK', 'JK-Flipflops'], ['T', 'T-Flipflops']].map(([k, l]) => `<button class="chip ${ffT === k ? 'on' : ''}" data-ff="${k}">${l}</button>`).join('')}</div></div>
       <ul class="help-list">
         <li><b>Zustand:</b> „＋ Zustand“, dann verschieben. Antippen zeigt Name, Startzustand und Ausgänge.</li>
         <li><b>Übergang:</b> „↗ Übergang“ einschalten und von einem Zustand zum nächsten ziehen (zum selben Zustand = Schleife). Danach die Bedingung festlegen.</li>
-        <li><b>Schaltung erzeugen:</b> Zustände werden binär codiert (Startzustand = 0…0) und mit D-Flipflops umgesetzt. Die Logik wird minimiert (DMF).</li>
+        <li><b>Moore oder Mealy:</b> Ausgänge im Zustand festlegen (Moore) oder am Übergang (Mealy, Anzeige „/ Y=1“).</li>
+        <li><b>Schaltung erzeugen:</b> Zustände werden binär codiert (Startzustand = 0…0) und mit den gewählten Flipflops umgesetzt. Die Logik wird minimiert (DMF).</li>
       </ul>`;
+    side.querySelector('#ffType').onclick = e => { const k = e.target.dataset.ff; if (!k) return; f.ffType = k; this.changed(); };
   }
 
   more() {
@@ -273,8 +281,8 @@ export class FsmEditor {
     let tb;
     try { tb = fsmTable(this.fsm); } catch (e) { return this.app.toast(e.message, true); }
     const f = this.fsm, code = c => c.toString(2).padStart(tb.k, '0');
-    const head = `<th>Zustand</th>${tb.qn.map(q => `<th class="step">${q}</th>`).join('')}${f.inputs.map(i => `<th>${esc(i)}</th>`).join('')}<th class="sepcol">Folgezustand</th>${tb.qn.map(q => `<th class="step">${q}⁺</th>`).join('')}${f.outputs.map((o, j) => `<th class="${j ? '' : 'sepcol'}">${esc(o)}</th>`).join('')}`;
-    const body = tb.rows.map(r => `<tr><td><b>${esc(r.from.name)}</b></td>${[...code(r.code)].map(b => `<td class="step">${b}</td>`).join('')}${r.inBits.map(b => `<td>${b}</td>`).join('')}<td class="sepcol"><b>${esc(r.to.name)}</b>${r.stay && f.trans.some(t => t.from === r.from.id) ? ' <small class="muted">(bleibt)</small>' : ''}</td>${[...code(r.next)].map(b => `<td class="step">${b}</td>`).join('')}${r.outs.map((v, j) => `<td class="${j ? '' : 'sepcol'} ${v ? 'one' : 'zero'}">${v}</td>`).join('')}</tr>`).join('');
+    const head = `<th>Zustand</th>${tb.qn.map(q => `<th class="step">${q}</th>`).join('')}${f.inputs.map(i => `<th>${esc(i)}</th>`).join('')}<th class="sepcol">Folgezustand</th>${tb.qn.map(q => `<th class="step">${q}⁺</th>`).join('')}${tb.ff !== 'D' ? tb.excNames.map((n, j) => `<th class="${j ? '' : 'sepcol'}">${n}</th>`).join('') : ''}${f.outputs.map((o, j) => `<th class="${j ? '' : 'sepcol'}">${esc(o)}</th>`).join('')}`;
+    const body = tb.rows.map(r => `<tr><td><b>${esc(r.from.name)}</b></td>${[...code(r.code)].map(b => `<td class="step">${b}</td>`).join('')}${r.inBits.map(b => `<td>${b}</td>`).join('')}<td class="sepcol"><b>${esc(r.to.name)}</b>${r.stay && f.trans.some(t => t.from === r.from.id) ? ' <small class="muted">(bleibt)</small>' : ''}</td>${[...code(r.next)].map(b => `<td class="step">${b}</td>`).join('')}${tb.ff !== 'D' ? r.exc.map((v, j) => `<td class="${j ? '' : 'sepcol'} ${v === 'X' ? '' : v ? 'one' : 'zero'}">${v}</td>`).join('') : ''}${r.outs.map((v, j) => `<td class="${j ? '' : 'sepcol'} ${v ? 'one' : 'zero'}">${v}</td>`).join('')}</tr>`).join('');
     let eqs = '';
     try { const { defs } = fsmCircuit(f); eqs = '<h3>Gleichungen (DMF, unbenutzte Codes als X)</h3>' + defs.map(d => `<div class="expr"><b>${esc(d.name)}</b> = ${toHTML(d.ast)}</div>`).join(''); } catch { }
     this.app.openDialog(`<div class="dialog"><h2>Zustandsübergangstabelle <button class="close">✕</button></h2>

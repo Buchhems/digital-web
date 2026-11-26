@@ -14,18 +14,18 @@ export class Recorder {
       ...pick(['Clock']), ...pick(['In']).sort((a, b) => natural(a.name, b.name)),
       ...circuit.comps.filter(c => GATES.has(c.type) && attrsOf(c).Label).map(c => ({ c, name: attrsOf(c).Label, bits: attrsOf(c).Bits || 1, step: true })),
       ...pick(['Probe'], true).map(s => ({ ...s, step: true })),
-      ...circuit.comps.filter(c => c.type === 'Sub' && attrsOf(c).Label).flatMap(c => pinsWorld(c).filter(p => p.out).map((p, k) => ({ c, k, name: attrsOf(c).Label + '.' + p.n, bits: p.bits || 1, step: true }))),
+      ...circuit.comps.filter(c => c.type === 'Custom' && attrsOf(c).Label).flatMap(c => pinsWorld(c).filter(p => p.out).map((p, k) => ({ c, k, name: attrsOf(c).Label + '.' + p.n, bits: p.bits || 1, step: true }))),
       ...pick(['Out']).sort((a, b) => natural(a.name, b.name)),
     ];
     this.samples = [];
   }
 
   value(sim, s) {
-    if (s.c.type === 'Sub') return sim.subOut(s.c, s.k);
+    if (s.c.type === 'Custom') return sim.subOut(s.c, s.k);
     const st = sim.st(s.c); if (!st) return null;
     if (s.c.type === 'In' || s.c.type === 'Clock') return st.value;
     if (GATES.has(s.c.type)) return st.outs[0];
-    if (s.c.type === 'Sub') return sim.subOut(s.c, s.k);
+    if (s.c.type === 'Custom') return sim.subOut(s.c, s.k);
     if (s.c.type === 'Probe') { s.bits = st.bits[0] || 1; return st.ins[0]; }
     return st.ins[0];
   }

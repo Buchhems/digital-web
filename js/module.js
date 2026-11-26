@@ -1,6 +1,6 @@
 // Ausgewählten Teil einer Schaltung in einen eigenen Baustein umwandeln
 import { Circuit, buildNets, onSegment } from './circuit.js';
-import { pinsWorld, boundsWorld, attrsOf, rot } from './components.js';
+import { pinsWorld, boundsWorld, attrsOf } from './components.js';
 import { library, touchLibrary } from './lib.js';
 
 const S = 20;
@@ -82,12 +82,12 @@ export function selectionToModule(circuit, sel, name, useRoutes = true) {
   const insideC = new Set([...sel].filter(x => x.type));
   const insideW = new Set([...sel].filter(x => !x.type));
   if (!insideC.size) throw new Error('Bitte zuerst Bauteile auswählen.');
-  if ([...insideC].some(c => c.type === 'Sub' && c.sub === name)) throw new Error('Ein Baustein kann sich nicht selbst enthalten.');
+  if ([...insideC].some(c => c.type === 'Custom' && c.sub === name)) throw new Error('Ein Baustein kann sich nicht selbst enthalten.');
 
   // Netze der ganzen Schaltung, Anschlüsse jedem Netz zuordnen
   const { nets, compPins, wireNet, subPins } = buildNets(circuit);
   const pinNet = (c) => {
-    if (c.type === 'Sub') return (subPins.get(c.id) || []).map(x => ({ p: x.p, net: x.net }));
+    if (c.type === 'Custom') return (subPins.get(c.id) || []).map(x => ({ p: x.p, net: x.net }));
     const cp = compPins.get(c.id); if (!cp) return [];
     let ii = 0, oi = 0;
     return pinsWorld(c).map(p => ({ p, net: p.out ? cp.outs[oi++] : cp.ins[ii++] }));
@@ -174,7 +174,7 @@ export function selectionToModule(circuit, sel, name, useRoutes = true) {
   for (const c of circuit.comps) for (const q of pinsWorld(c)) occupied.add(key(q.x, q.y));
   for (const w of circuit.wires) { occupied.add(key(w.x1, w.y1)); occupied.add(key(w.x2, w.y2)); }
   for (const p of ports) for (const [x, y] of p.touch) occupied.add(key(x, y));
-  const probe = { id: -7, type: 'Sub', sub: name, x: 0, y: 0, rot: 0, attrs: {} };
+  const probe = { id: -7, type: 'Custom', sub: name, x: 0, y: 0, rot: 0, attrs: {} };
   const touchAll = ports.flatMap(p => p.touch);
   const free = (x, y) => {
     probe.x = x; probe.y = y;
@@ -197,7 +197,7 @@ export function selectionToModule(circuit, sel, name, useRoutes = true) {
     if (free(cx + dx * S, cy + dy * S)) { pos = [cx + dx * S, cy + dy * S]; break outer; }
   }
   if (!pos) pos = [cx, snap(y1) + 80];
-  const inst = circuit.addComp('Sub', pos[0], pos[1], {});
+  const inst = circuit.addComp('Custom', pos[0], pos[1], {});
   inst.sub = name;
   const outerName = p => (p.touch.length || !p.outTunnel ? name + '.' + p.label : attrsOf(p.outTunnel.c).NetName);
   const pins = pinsWorld(inst);
@@ -221,8 +221,8 @@ export function selectionToModule(circuit, sel, name, useRoutes = true) {
   circuit.cleanup();
   // Kontrolle: jeder Anschluss genau mit "seinem" Netz verbunden, keine Netze vereint
   const ok = (circ, anchor) => {
-    const { nets: nn, compPins: cpm, subPins: spm } = buildNets(circ);
-    const netAt = (x, y) => { for (const k of circ.comps) { const pp = k.type === 'Sub' ? (spm.get(k.id) || []).map(z => ({ p: z.p, net: z.net })) : (() => { const cp = cpm.get(k.id); if (!cp) return []; let i = 0, o = 0; return pinsWorld(k).map(p => ({ p, net: p.out ? cp.outs[o++] : cp.ins[i++] })); })(); const h = pp.find(z => z.p.x === x && z.p.y === y); if (h) return h.net; } return null; };
+    const { compPins: cpm, subPins: spm } = buildNets(circ);
+    const netAt = (x, y) => { for (const k of circ.comps) { const pp = k.type === 'Custom' ? (spm.get(k.id) || []).map(z => ({ p: z.p, net: z.net })) : (() => { const cp = cpm.get(k.id); if (!cp) return []; let i = 0, o = 0; return pinsWorld(k).map(p => ({ p, net: p.out ? cp.outs[o++] : cp.ins[i++] })); })(); const h = pp.find(z => z.p.x === x && z.p.y === y); if (h) return h.net; } return null; };
     const seen = new Map();
     for (const p of ports) {
       const a = anchor(p); if (!a) continue;
@@ -232,10 +232,9 @@ export function selectionToModule(circuit, sel, name, useRoutes = true) {
       if (seen.has(n) && seen.get(n) !== p) return false;
       seen.set(n, p);
     }
-    void nn; return true;
+    return true;
   };
   if (useRoutes && !(ok(circuit, p => { const q = pinOf(p); return q && [q.x, q.y]; }) && ok(sub, p => [portComp.get(p).x, portComp.get(p).y]))) return { retry: true };
   return { instance: inst, inputs: ins.map(p => p.label), outputs: outs.map(p => p.label) };
 }
 
-void rot;

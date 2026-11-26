@@ -1,6 +1,7 @@
 // Datenmodell der Schaltung und Netzbildung
 import { DEF, pinsWorld, attrsOf } from './components.js';
 import { getCircuit } from './lib.js';
+import { isGeneric, resolveCircuit, initArgs, instanceArgs, registerCircuitClass } from './generics.js';
 
 let nextId = 1;
 export const newId = () => nextId++;
@@ -33,6 +34,8 @@ export class Circuit {
   static fromJSON(j) {
     const c = new Circuit();
     for (const k of j.comps || []) {
+      // früher hieß der eigene Baustein "Sub" (heute ist das der Subtrahierer wie in Digital)
+      if (k.type === 'Sub' && k.sub) k = { ...k, type: 'Custom' };
       if (!DEF[k.type]) continue;
       const comp = c.addComp(k.type, k.x, k.y, k.attrs || {}, k.rot || 0);
       if (k.raw) comp.raw = k.raw;
@@ -110,10 +113,14 @@ class UF {
 // Netze bilden. Teilschaltungen werden (wie in Digital) rekursiv eingebettet.
 // Liefert {nets, compPins: Map(id -> {ins,outs}), wireNet: Map(wireId -> net), comps: flache Bauteilliste}
 export function buildNets(circuit) {
+  const problems = [];
+  // generische Schaltung direkt simulieren: Standardargumente verwenden
+  if (isGeneric(circuit)) {
+    try { circuit = resolveCircuit(circuit, initArgs(circuit)); } catch (e) { problems.push('Generischer Code: ' + e.message); }
+  }
   const uf = new UF();
   const flat = [];   // {c, pins:[{key, p}]}
   const topWires = [];
-  const problems = [];
 
   function flatten(circ, pre, depth) {
     const pk = (x, y) => pre + 'p' + x + ',' + y;
@@ -130,9 +137,13 @@ export function buildNets(circuit) {
       if (c.type === 'Text' || c.type === 'Unknown' || c.type === 'Testcase' || c.type === 'PowerSupply') continue;
       if (depth > 0 && (c.type === 'In' || c.type === 'Out' || c.type === 'Clock')) continue; // werden zu Anschlüssen
       const pins = pinsWorld(c);
-      if (c.type === 'Sub') {
-        const sub = getCircuit(c.sub);
+      if (c.type === 'Custom') {
+        let sub = getCircuit(c.sub);
         if (!sub) { problems.push(`Baustein „${c.sub}“ fehlt.`); continue; }
+        if (isGeneric(sub)) {
+          try { sub = resolveCircuit(sub, instanceArgs(c), c.sub); }
+          catch (e) { problems.push(`Baustein „${c.sub}“: ${e.message}`); continue; }
+        }
         if (depth > 16) { problems.push(`Baustein „${c.sub}“ enthält sich selbst.`); continue; }
         const subPre = pre + c.id + '/';
         flatten(sub, subPre, depth + 1);
@@ -178,7 +189,7 @@ export function buildNets(circuit) {
   for (const w of topWires) { const n = getNet('w' + w.id); wireNet.set(w.id, n); nets[n].wires.push(w); }
   // Anschlüsse der Bausteine auf oberster Ebene: Netz je Anschluss merken (für Zwischenschritte) und Bitbreiten prüfen
   const subPins = new Map();
-  for (const c of circuit.comps) if (c.type === 'Sub') {
+  for (const c of circuit.comps) if (c.type === 'Custom') {
     const list = [];
     for (const p of pinsWorld(c)) {
       const n = getNet('p' + p.x + ',' + p.y); list.push({ p, net: n });
@@ -206,3 +217,5 @@ export function junctions(circuit) {
   }
   return res;
 }
+
+registerCircuitClass(Circuit);

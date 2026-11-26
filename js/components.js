@@ -3,91 +3,14 @@
 // austauschbar sind. Symbole: DIN EN 60617 (IEC) als Standard, IEEE optional.
 
 import { getCircuit, libVersion } from './lib.js';
+import { isGeneric, resolveCircuit, instanceArgs } from './generics.js';
+import { S, mask, v0, range, settings, P, formatValue, generic, drawGenericBox, invSet, applyInv } from './base.js';
+export { S, mask, settings, formatValue } from './base.js';
+import { SWITCH_DEFS } from './comp-switch.js';
+import { ARITH_DEFS, PLEX_DEFS } from './comp-arith.js';
+import { MEM_DEFS } from './comp-mem.js';
+import { IO_DEFS, DISPLAY_DEFS, MISC_IO_DEFS } from './comp-io.js';
 
-export const S = 20;
-export const mask = b => (b >= 32 ? 0xFFFFFFFF : 2 ** b - 1);
-const v0 = x => (x == null ? 0 : x);
-const range = n => Array.from({ length: n }, (_, i) => i);
-
-export const settings = { shapes: 'iec' };
-
-// ---------- Eigenschaften ----------
-const P = {
-  label: { key: 'Label', label: 'Beschriftung', type: 'text' },
-  pinNumber: { key: 'pinNumber', label: 'Pin-Nummer (im Baustein)', type: 'text', hint: 'Nur für Bausteine im DIL-Gehäuse: an welchem Pin dieser Anschluss liegt.' },
-  gateLabel: { key: 'Label', label: 'Beschriftung', type: 'text', hint: 'Beschriftete Gatter erscheinen in der Wertetabelle als Zwischenschritt.' },
-  bits: { key: 'Bits', label: 'Datenbits', type: 'int', min: 1, max: 32 },
-  inputs: { key: 'Inputs', label: 'Anzahl Eingänge', type: 'int', min: 2, max: 16 },
-  wide: { key: 'wideShape', label: 'Breite Form', type: 'bool' },
-  invert: { key: 'inverterConfig', label: 'Eingänge negieren', type: 'invert' },
-  selBits: { key: 'Selector Bits', label: 'Auswahlbits', type: 'int', min: 1, max: 6 },
-  flip: { key: 'flipSelPos', label: 'Auswahl-Eingang oben', type: 'bool' },
-  freq: { key: 'Frequency', label: 'Frequenz (Hz)', type: 'int', min: 1, max: 50 },
-  realtime: { key: 'runRealTime', label: 'Läuft automatisch', type: 'bool' },
-  value: { key: 'Value', label: 'Wert', type: 'int', min: 0, max: 0xFFFFFFFF },
-  inDefault: { key: 'InDefault', label: 'Startwert', type: 'int', min: 0, max: 0xFFFFFFFF },
-  format: { key: 'intFormat', label: 'Zahlenformat', type: 'select', options: [['def', 'Dezimal'], ['hex', 'Hexadezimal'], ['bin', 'Binär']] },
-  color: { key: 'Color', label: 'Farbe', type: 'color' },
-  netName: { key: 'NetName', label: 'Netzname', type: 'text' },
-  desc: { key: 'Description', label: 'Text', type: 'textarea' },
-  inSplit: { key: 'Input Splitting', label: 'Eingänge (Bits)', type: 'text', hint: 'z. B. 4 oder 1,1,1,1 oder 4*1' },
-  outSplit: { key: 'Output Splitting', label: 'Ausgänge (Bits)', type: 'text', hint: 'z. B. 1,1,1,1' },
-  activeLow: { key: 'activeLow', label: 'Low-aktiv', type: 'bool' },
-  withEnable: { key: 'withEnable', label: 'Mit T-Eingang', type: 'bool' },
-};
-
-export function formatValue(v, bits, fmt = 'def') {
-  if (v == null) return 'Z';
-  if (bits === 1) return String(v);
-  if (fmt === 'hex') return '0x' + v.toString(16).toUpperCase();
-  if (fmt === 'bin') return '0b' + v.toString(2).padStart(bits, '0');
-  return String(v);
-}
-
-// ---------- Generische Form (wie GenericShape in Digital) ----------
-function generic({ ins, outs, width, invOut = false, invIn = new Set() }) {
-  const nIn = ins.length, nOut = outs.length;
-  const sym = nOut === 1, even = (nIn & 1) === 0;
-  const offs = sym ? Math.floor(nIn / 2) * S : 0;
-  const pins = [];
-  ins.forEach((p, i) => {
-    let y = i * S;
-    if (sym && even && i >= nIn / 2) y += S;
-    pins.push({ ...p, x: invIn.has(i) ? -S : 0, y, out: false, inv: invIn.has(i) });
-  });
-  outs.forEach((p, i) => pins.push({ ...p, x: S * (width + (invOut ? 1 : 0)), y: i * S + offs, out: true }));
-  const max = Math.max(nIn, nOut);
-  const yb = (max - 1) * S + 10 + (sym && even ? S : 0);
-  return {
-    pins, yb, offs, width, invOut,
-    box: { x0: invIn.size ? -S : 0, y0: -10, x1: S * width + (invOut ? S : 0), y1: yb },
-  };
-}
-
-function drawGenericBox(r, g, a, { title, labels = true, clockPins = [] } = {}) {
-  const W = S * g.width;
-  r.rect(1, -10, W - 1, g.yb);
-  for (const p of g.pins) {
-    if (labels) {
-      if (!p.out) {
-        let dx = 4 + (p.inv ? S : 0);
-        if (p.clock) { r.poly([[1, p.y - 6], [8, p.y], [1, p.y + 6]], false); dx += 7; }
-        r.text(p.x + dx - (p.inv ? S : 0), p.y, p.n, 1, 0, 11);
-      } else {
-        r.text(W - 4, p.y, p.n, -1, 0, 11);
-      }
-    }
-    if (p.inv) r.invIn(p.y);
-  }
-  if (g.invOut) for (const p of g.pins.filter(p => p.out)) r.invOut(W, p.y, p.x);
-  if (title) r.text(W / 2, g.yb + 4, title, 0, 1, 11, 'name');
-  if (a.Label) r.text(W / 2, -14, a.Label, 0, -1, 13, 'label');
-}
-
-// Indizes der Eingänge, die laut inverterConfig negiert sind
-const invSet = (a, names) => new Set(names.map((n, i) => ((a.inverterConfig || []).includes(n) ? i : -1)).filter(i => i >= 0));
-// Negation mit der Bitbreite des jeweiligen Eingangs
-const applyInv = (ins, g) => ins.map((x, i) => (g.pins[i]?.inv ? (x == null ? null : (~x & mask(g.pins[i].bits || 1)) >>> 0) : x));
 
 // ---------- Gatter ----------
 function gate(type, name, sym, fn, invOut, ieee) {
@@ -384,7 +307,6 @@ export function parseSplitPorts(s) {
   }
   return out.length ? out : [{ bits: 1, lo: 0 }];
 }
-export const parseSplit = s => parseSplitPorts(s).map(p => p.bits);
 const Splitter = {
   type: 'Splitter', name: 'Splitter', cat: 'Leitungen',
   defaults: { 'Input Splitting': '4,4', 'Output Splitting': '8' },
@@ -509,18 +431,6 @@ const BitExtender = {
     return [neg ? ((v | (mask(a.outputBits) - mask(a.inputBits))) >>> 0) : v];
   },
   draw(r, c, a, g) { drawGenericBox(r, g, a, { title: 'Vorzeichen' }); },
-};
-// N-Kanal-FET (vereinfacht: leitet von S nach D, wenn G = 1) – reicht für Open-Collector-Ausgänge
-const NFET = {
-  type: 'NFET', name: 'N-FET', cat: 'Leitungen',
-  defaults: { Bits: 1, Label: '' }, props: [P.label],
-  geo(a) { return { pins: [{ n: 'G', bits: 1, x: 0, y: 2 * S, out: false }, { n: 'S', bits: a.Bits, x: S, y: 2 * S, out: false, vert: true }, { n: 'D', bits: a.Bits, x: S, y: 0, out: true, vert: true }], box: { x0: 0, y0: 0, x1: S + 10, y1: 2 * S } }; },
-  eval(ins) { return [v0(ins[0]) ? ins[1] : null]; },
-  draw(r) {
-    r.poly([[S, 0], [8, 0], [8, 8]], false); r.poly([[S, 2 * S], [8, 2 * S], [8, 2 * S - 8]], false);
-    r.line(8, 13, 8, 27); r.line(1, 0, 1, 2 * S); r.line(13, S, S, S, 1);
-    r.poly([[12, S], [17, S - 3], [17, S + 3]], true, null, 0, '#222');
-  },
 };
 // Spannungsversorgung (in den 74xx-Chips von Digital) – ohne Funktion in der Simulation
 const PowerSupply = {
@@ -695,6 +605,46 @@ export function subInterface(circuit) {
   }
   return { ins, outs };
 }
+// Form "LAYOUT" (Digital): Anschlüsse auf der Seite, zu der Ein-/Ausgang in der Schaltung zeigt
+function layoutGeo(sub, ins, outs) {
+  const L = { left: [], right: [], top: [], bottom: [] };
+  for (const k of sub.comps) {
+    const a = { ...DEF[k.type]?.defaults, ...k.attrs }, r = (k.rot || 0) & 3;
+    if (k.type === 'In' || k.type === 'Clock') L[['left', 'bottom', 'right', 'top'][r]].push({ label: a.Label, x: k.x, y: k.y });
+    if (k.type === 'Out') L[['right', 'top', 'left', 'bottom'][r]].push({ label: a.Label, x: k.x, y: k.y });
+  }
+  const mx = (l, m) => Math.max(m, l.length + 1);
+  const height = mx(L.left, mx(L.right, sub.top?.Height ?? 3)), width = mx(L.top, mx(L.bottom, sub.top?.Width ?? 3));
+  const map = new Map();
+  const place = (l, sx, sy, len, horiz, side) => {
+    if (!l.length) return;
+    l.sort((p, q) => (horiz ? p.x - q.x : p.y - q.y));
+    const delta = Math.floor((len + 2) / (l.length + 1)), pinsOnly = delta * (l.length - 1);
+    let pos = Math.floor((len - pinsOnly) / 2);
+    for (const p of l) { map.set(p.label, { x: horiz ? sx + S * pos : sx, y: horiz ? sy : sy + S * pos, side }); pos += delta; }
+  };
+  place(L.top, 0, 0, width, true, 'top'); place(L.bottom, 0, S * height, width, true, 'bottom');
+  place(L.left, 0, 0, height, false, 'left'); place(L.right, S * width, 0, height, false, 'right');
+  const pins = [...ins.map(p => ({ ...p, out: false })), ...outs.map(p => ({ ...p, out: true }))].map(p => {
+    const q = map.get(p.n) || { x: 0, y: 0, side: 'left' };
+    return { n: p.n, bits: p.bits, clock: p.clock, x: q.x, y: q.y, out: p.out, vert: q.side === 'top' || q.side === 'bottom', side: q.side };
+  });
+  return { pins, layout: true, width, height, hasTop: L.top.length > 0, hasBottom: L.bottom.length > 0, box: { x0: 0, y0: 0, x1: S * width, y1: S * height } };
+}
+// Form "MINIMIZED" (Digital): verkleinerte Schaltung, Anschlüsse an den Stellen der Ein-/Ausgänge
+function minimizedGeo(sub, ins, outs) {
+  const pos = new Map();
+  for (const k of sub.comps) if (k.type === 'In' || k.type === 'Clock' || k.type === 'Out') pos.set({ ...DEF[k.type]?.defaults, ...k.attrs }.Label, [k.x, k.y]);
+  const xs = [...pos.values()].map(p => p[0]), ys = [...pos.values()].map(p => p[1]);
+  const minX = xs.length ? Math.min(...xs) : 0, minY = ys.length ? Math.min(...ys) : 0;
+  const grid = v => Math.round(v / 2 / S) * S;
+  const pins = [...ins.map(p => ({ ...p, out: false })), ...outs.map(p => ({ ...p, out: true }))].map(p => {
+    const q = pos.get(p.n) || [minX, minY];
+    return { n: p.n, bits: p.bits, clock: p.clock, x: grid(q[0] - minX), y: grid(q[1] - minY), out: p.out };
+  });
+  const px = pins.map(p => p.x), py = pins.map(p => p.y);
+  return { pins, minimized: true, box: { x0: Math.min(0, ...px), y0: Math.min(0, ...py) - 10, x1: Math.max(S, ...px), y1: Math.max(S, ...py) + 10 } };
+}
 // DIL-Gehäuse wie in Digital: Pin 1..n/2 links von oben, Rest rechts von unten, Abstand 40
 function dilGeo(sub, ins, outs) {
   const top = sub.top || {};
@@ -712,20 +662,45 @@ function dilGeo(sub, ins, outs) {
   return { pins, dil: true, width, pc, map, box: { x0: 0, y0: -S, x1: S * width, y1: h } };
 }
 const Sub = {
-  type: 'Sub', name: 'Baustein', cat: null,
+  type: 'Custom', name: 'Baustein', cat: null,
   defaults: { Label: '' },
   props: [{ ...P.label, hint: 'Mit Beschriftung erscheinen die Ausgänge des Bausteins in der Wertetabelle als Zwischenschritte (z. B. HA1.S).' }],
+  genericProp: { key: 'generic', label: 'Parameter (generischer Baustein)', type: 'textarea', mono: true, hint: 'z. B. bits := 8; – im Baustein über args.bits verfügbar.' },
   geo(a, c) {
-    const sub = getCircuit(c?.sub);
+    let sub = getCircuit(c?.sub);
     if (!sub) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };
+    if (isGeneric(sub)) { try { sub = resolveCircuit(sub, instanceArgs(c), c.sub); } catch { /* Fehler zeigt die Simulation */ } }
     const { ins, outs } = subInterface(sub);
     if (!ins.length && !outs.length) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };
-    if (sub.top?.shapeType === 'DIL') return dilGeo(sub, ins, outs);
+    // Form: am Baustein eingestellt (falls nicht "DEFAULT"), sonst die der Schaltung
+    const shape = a.shapeType && a.shapeType !== 'DEFAULT' ? a.shapeType : sub.top?.shapeType;
+    if (shape === 'DIL') return dilGeo(sub, ins, outs);
+    if (shape === 'LAYOUT') return layoutGeo(sub, ins, outs);
+    if (shape === 'MINIMIZED') return minimizedGeo(sub, ins, outs);
     return generic({ ins, outs: outs.length ? outs : [], width: sub.top?.Width ?? 3 });
   },
   eval() { return []; },
   draw(r, c, a, g) {
     if (g.missing) { r.rect(0, -10, 100, 30, true, '#fde8e8'); r.text(50, 10, (c.sub || '?') + ' fehlt', 0, 0, 11, 'name'); return; }
+    if (g.layout) {
+      r.rect(0, 0, S * g.width, S * g.height, true);
+      for (const p of g.pins) {
+        if (p.side === 'left') r.text(p.x + 4, p.y, p.n, 1, 0, 11, 'pinlabel');
+        else if (p.side === 'right') r.text(p.x - 4, p.y, p.n, -1, 0, 11, 'pinlabel');
+        else r.text(p.x, p.y + (p.side === 'top' ? 4 : -4), p.n, 0, p.side === 'top' ? 1 : -1, 10, 'pinlabel');
+      }
+      const name = a.Label || c.sub;
+      if (!g.hasBottom) r.text(S * g.width / 2, S * g.height + 4, name, 0, 1, 12, 'name');
+      else if (!g.hasTop) r.text(S * g.width / 2, -4, name, 0, -1, 12, 'name');
+      else r.text(S * g.width / 2, S * g.height / 2, name, 0, 0, 12, 'name');
+      return;
+    }
+    if (g.minimized) {
+      const b = g.box; r.ctx.save(); r.ctx.setLineDash([5, 4]); r.ctx.lineWidth = 1.5; r.ctx.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); r.ctx.restore();
+      for (const p of g.pins) r.text(p.x + (p.out ? -3 : 3), p.y - 3, p.n, p.out ? -1 : 1, -1, 8, 'pinlabel');
+      r.text((b.x0 + b.x1) / 2, b.y0 - 2, a.Label || c.sub, 0, -1, 11, 'name');
+      return;
+    }
     if (g.dil) {
       const x = S * g.width, p = 10, h = (g.pc / 2) * 2 * S - S, R = S / 2;
       r.path(ctx => {
@@ -756,7 +731,7 @@ const Testcase = {
   type: 'Testcase', name: 'Testfall', cat: 'Sonstiges',
   defaults: { Label: '', Testdata: '' },
   initial: { Testdata: 'A B Y\n0 0 0\n0 1 0\n1 0 0\n1 1 1' },
-  props: [P.label, { key: 'Testdata', label: 'Testdaten', type: 'textarea', mono: true, hint: 'Erste Zeile: Namen der Ein- und Ausgänge. Dann je Zeile die Werte. X = beliebig, C = Taktimpuls, # = Kommentar.' }],
+  props: [P.label, { key: 'Testdata', label: 'Testdaten', type: 'textarea', mono: true, hint: 'Erste Zeile: Namen der Ein- und Ausgänge. Dann je Zeile die Werte. X = beliebig, C = Taktimpuls, Z = hochohmig, # = Kommentar. Außerdem wie in Digital: loop(i,n) … end loop, while(Bedingung) … end while, repeat(n), let, declare, init, memory Name(Adr) = Wert;, program(…), bits(k, Ausdruck), resetRandom.' }],
   geo() { return { pins: [], box: { x0: 0, y0: 0, x1: 80, y1: 40 } }; },
   eval() { return []; },
   draw(r, c, a) {
@@ -765,6 +740,24 @@ const Testcase = {
     r.text(40, a.Label ? 13 : 20, res === 'ok' ? 'Test ✓' : res === 'fail' ? 'Test ✗' : 'Test', 0, 0, 13, 'value');
     if (a.Label) r.text(40, 28, a.Label, 0, 0, 11, 'name');
   },
+};
+
+// Code-Bauteile für generische Schaltungen
+const GenericInitCode = {
+  type: 'GenericInitCode', name: 'Generische Initialisierung', cat: 'Sonstiges',
+  defaults: { generic: '', enabled: true }, initial: { generic: 'bits := 4;' },
+  props: [{ key: 'generic', label: 'Standardargumente', type: 'textarea', mono: true, hint: 'Werte, mit denen die generische Schaltung allein simuliert wird, z. B. bits := 4;' }, { key: 'enabled', label: 'Aktiv', type: 'bool' }],
+  geo() { return { pins: [], box: { x0: 0, y0: 0, x1: 120, y1: 40 } }; },
+  eval() { return []; },
+  draw(r, c, a) { r.rrect(1, 1, 119, 39, 6, '#ecfdf5'); r.text(8, 8, 'Init', 1, 1, 10, 'name'); r.text(8, 22, String(a.generic || '').split('\n')[0].slice(0, 18), 1, 1, 11, 'value'); },
+};
+const GenericCode = {
+  type: 'GenericCode', name: 'Generischer Code', cat: 'Sonstiges',
+  defaults: { generic: '' }, initial: { generic: '// addComponent("And", x, y); addWire(x1, y1, x2, y2);' },
+  props: [{ key: 'generic', label: 'Code', type: 'textarea', mono: true, hint: 'Erzeugt Bauteile und Leitungen: c := addComponent("And", 10, 5); c.Inputs = args.n; addWire(0, 0, 10, 0); (Koordinaten in Rastereinheiten)' }],
+  geo() { return { pins: [], box: { x0: 0, y0: 0, x1: 120, y1: 40 } }; },
+  eval() { return []; },
+  draw(r) { r.rrect(1, 1, 119, 39, 6, '#eff6ff'); r.text(60, 20, '{ Code }', 0, 0, 12, 'value'); },
 };
 
 // Platzhalter für Bauteile aus .dig-Dateien, die (noch) nicht unterstützt werden
@@ -777,7 +770,7 @@ export const Unknown = {
 };
 
 export const DEFS = [
-  In, Out, LED, Button, Clock, Const, Ground, VDD, Probe, SevenSeg, SevenSegHex,
+  In, Out, LED, Button, Clock, Const, Ground, VDD, Probe, SevenSeg, SevenSegHex, ...IO_DEFS,
   gate('And', 'UND', '&', AND, false, ieeeAnd),
   gate('Or', 'ODER', '≥1', OR, false, ieeeOr),
   gate('Not', 'NICHT', '1', v => v[0], true, ieeeNot),
@@ -786,8 +779,8 @@ export const DEFS = [
   gate('XOr', 'XOR', '=1', XOR, false, (r, g) => ieeeOr(r, g, true)),
   gate('XNOr', 'XNOR', '=1', XOR, true, (r, g) => ieeeOr(r, g, true)),
   Tunnel, Splitter, driver('Driver', 'Treiber (Tri-State)', false), driver('DriverInvSel', 'Treiber, Steuerung invertiert', true),
-  BusSplitter, pull('PullUp', 'Pull-up', true), pull('PullDown', 'Pull-down', false), Delay, NFET,
-  Mux, Demux, Decoder,
+  BusSplitter, pull('PullUp', 'Pull-up', true), pull('PullDown', 'Pull-down', false), Delay,
+  Mux, Demux, Decoder, ...PLEX_DEFS,
   ff('RS_FF', 'RS-Flipflop', ['S', 'C', 'R'], (v, q) => (v.S && !v.R ? 1 : !v.S && v.R ? 0 : q)),
   ff('JK_FF', 'JK-Flipflop', ['J', 'C', 'K'], (v, q) => (v.J && v.K ? ~q : v.J ? 1 : v.K ? 0 : q)),
   ff('D_FF', 'D-Flipflop', ['D', 'C'], v => v.D, { Bits: 1 }, [P.bits]),
@@ -795,11 +788,17 @@ export const DEFS = [
   ff('D_FF_AS', 'D-Flipflop (Set/Clr)', ['Set', 'D', 'C', 'Clr'], v => v.D, { Bits: 1 }, [P.bits]),
   ff('JK_FF_AS', 'JK-Flipflop (Set/Clr)', ['Set', 'J', 'C', 'K', 'Clr'], (v, q) => (v.J && v.K ? ~q : v.J ? 1 : v.K ? 0 : q)),
   RS_AS,
-  Add, Comparator, Counter, Register, BitExtender,
+  Add, ...ARITH_DEFS.slice(0, 4), Comparator, ...ARITH_DEFS.slice(4, 6), Counter, ARITH_DEFS[6], Register, BitExtender, ARITH_DEFS[7],
   Text, Testcase,
+  ...MEM_DEFS,
+  ...SWITCH_DEFS,
+  ...DISPLAY_DEFS,
+  ...MISC_IO_DEFS,
+  GenericInitCode, GenericCode,
 ];
 export const DEF = Object.fromEntries([...DEFS, Unknown, Sub, PowerSupply].map(d => [d.type, d]));
-export const CATEGORIES = [...new Set(DEFS.map(d => d.cat))];
+const CAT_ORDER = ['Ein-/Ausgabe', 'Logikgatter', 'Plexer', 'Flipflops', 'Arithmetik', 'Speicher', 'Leitungen', 'Schalter & Transistoren', 'Anzeigen & Terminal', 'Simulation', 'Sonstiges'];
+export const CATEGORIES = [...new Set([...CAT_ORDER, ...DEFS.map(d => d.cat)])].filter(k => k && DEFS.some(d => d.cat === k));
 
 export function attrsOf(c) {
   const d = DEF[c.type];
@@ -809,7 +808,7 @@ export function attrsOf(c) {
 // Geometrie mit Cache pro Bauteil
 const geoCache = new WeakMap();
 export function geoOf(c) {
-  const key = c.type + JSON.stringify(c.attrs) + (c.type === 'Sub' ? c.sub + '#' + libVersion() : '');
+  const key = c.type + JSON.stringify(c.attrs) + (c.type === 'Custom' ? c.sub + '#' + libVersion() : '');
   const cached = geoCache.get(c);
   if (cached && cached.key === key) return cached.g;
   const g = DEF[c.type].geo(attrsOf(c), c);
@@ -826,16 +825,19 @@ export function rot(x, y, r) {
   }
 }
 
+// Gespiegelt (an der x-Achse, wie in Digital) und gedreht
+export function xform(c, x, y) { return rot(x, c.attrs?.mirror ? -y : y, c.rot || 0); }
+
 export function pinsWorld(c) {
   return geoOf(c).pins.map((p, i) => {
-    const [x, y] = rot(p.x, p.y, c.rot || 0);
+    const [x, y] = xform(c, p.x, p.y);
     return { ...p, idx: i, x: x + c.x, y: y + c.y };
   });
 }
 
 export function boundsWorld(c) {
   const b = geoOf(c).box;
-  const pts = [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => rot(x, y, c.rot || 0));
+  const pts = [[b.x0, b.y0], [b.x1, b.y0], [b.x0, b.y1], [b.x1, b.y1]].map(([x, y]) => xform(c, x, y));
   const xs = pts.map(p => p[0] + c.x), ys = pts.map(p => p[1] + c.y);
   return { x0: Math.min(...xs), y0: Math.min(...ys), x1: Math.max(...xs), y1: Math.max(...ys) };
 }

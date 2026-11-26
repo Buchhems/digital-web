@@ -1,5 +1,5 @@
 // Zeichenfläche mit Touch-/Stift-/Maus-Bedienung
-import { DEF, attrsOf, geoOf, pinsWorld, boundsWorld, rot, S, formatValue } from './components.js';
+import { DEF, attrsOf, geoOf, pinsWorld, boundsWorld, xform, S, formatValue } from './components.js';
 import { buildNets, junctions } from './circuit.js';
 
 const COL = {
@@ -222,6 +222,7 @@ export class Editor {
         else if (!a.moved && def.tap) {
           const res = def.tap(st, attrsOf(a.c), this.sim, a.c);
           if (res === 'askValue') this.hooks.askValue?.(a.c);
+          else if (typeof res === 'string') this.hooks.tapAction?.(res, a.c);
           else this.sim.update(a.c);
         }
         this.hooks.onSimChange?.();
@@ -440,6 +441,7 @@ export class Editor {
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.transform(cs, -sn, sn, cs, 0, 0);
+    if (c.attrs?.mirror) ctx.scale(1, -1);
     ctx.lineWidth = 2; ctx.strokeStyle = COL.fg; ctx.fillStyle = COL.body;
     const R = makeRenderer(ctx, c, texts);
     try { def.draw(R, c, a, g, st); } catch (err) { console.error(err); }
@@ -496,8 +498,8 @@ function makeRenderer(ctx, c, texts) {
     path(fn, closed = true) { ctx.beginPath(); fn(ctx); fill(closed ? COL.body : null); },
     text(x, y, str, hx, hy, size, kind) {
       if (str === '' || str == null) return;
-      const [px, py] = rot(x, y, c.rot || 0);
-      const [ax, ay] = rot(hx, hy, c.rot || 0);
+      const [px, py] = xform(c, x, y);
+      const [ax, ay] = xform(c, hx, hy);
       texts.push({ x: px + c.x, y: py + c.y, str: String(str), hx: ax, hy: ay, size, kind });
     },
     valueColor(v, bits) { return v == null ? COL.z : bits > 1 ? COL.bus : v ? COL.high : COL.low; },

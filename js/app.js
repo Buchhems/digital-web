@@ -1,4 +1,6 @@
-import { DEF, DEFS, CATEGORIES, attrsOf, settings, mask, formatValue, subInterface, pinsWorld } from './components.js';
+import { DEF, DEFS, CATEGORIES, attrsOf, geoOf, settings, mask, formatValue, subInterface, pinsWorld, boundsWorld } from './components.js';
+import { parseData, formatData } from './comp-mem.js';
+import { touchGenerics } from './generics.js';
 import { Circuit } from './circuit.js';
 import { Sim } from './sim.js';
 import { Editor, drawPreview } from './editor.js';
@@ -18,7 +20,7 @@ import { makeModule as moduleFromSelection, route as routeWire } from './module.
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const STORE = 'digitalweb.v1';
-const VERSION = 'Version 10 · 26.11.2026';
+const VERSION = 'Version 12 · 26.11.2026';
 
 // ---------- Zustand ----------
 // Ein Projekt besteht aus mehreren Schaltungen (library). Jede kann in den anderen als Baustein dienen.
@@ -34,6 +36,14 @@ const editor = new Editor($('#canvas'), {
   onChange: commit,
   onSelect: renderProps,
   askValue: c => askValue(c),
+  tapAction: (act, c) => {
+    if (act === 'showMemory') showMemory(c, true);
+    else if (act === 'showView') showLiveView(c);
+    else if (act === 'keyboard') showKeyboard(c);
+    else if (act === 'rotate') showRotate(c);
+    else if (act === 'showGraph') toggleGraph(true);
+    else if (act === 'resume') { editor.sim.paused = false; editor.sim.update(c); toast('Simulation läuft weiter.'); updateFreqLabel(); }
+  },
   onSimChange: () => recordSample(),
 });
 
@@ -93,7 +103,7 @@ function addDocsRenaming(docs) {
   const map = {};
   for (const n of Object.keys(docs)) map[n] = uniqueName(n);
   for (const [n, c] of Object.entries(docs)) {
-    for (const k of c.comps) if (k.type === 'Sub' && map[k.sub]) k.sub = map[k.sub];
+    for (const k of c.comps) if (k.type === 'Custom' && map[k.sub]) k.sub = map[k.sub];
     library.set(map[n], c);
   }
   touchLibrary();
@@ -106,13 +116,13 @@ function renameDoc(old, nu) {
   if (library.has(nu)) return toast(`„${nu}“ gibt es schon.`, true), false;
   const entries = [...library].map(([n, c]) => [n === old ? nu : n, c]);
   library.clear(); for (const [n, c] of entries) library.set(n, c);
-  for (const c of library.values()) for (const k of c.comps) if (k.type === 'Sub' && k.sub === old) k.sub = nu;
+  for (const c of library.values()) for (const k of c.comps) if (k.type === 'Custom' && k.sub === old) k.sub = nu;
   if (current === old) current = nu;
   navStack = navStack.map(n => (n === old ? nu : n));
   touchLibrary(); autosave(); buildPalette(); updateUI(); editor.invalidate();
   return true;
 }
-function usersOf(name) { return [...library.keys()].filter(n => n !== name && library.get(n).comps.some(k => k.type === 'Sub' && k.sub === name)); }
+function usersOf(name) { return [...library.keys()].filter(n => n !== name && library.get(n).comps.some(k => k.type === 'Custom' && k.sub === name)); }
 
 // ---------- Toast ----------
 let toastT;
@@ -128,31 +138,85 @@ const tileRO = new ResizeObserver(entries => {
     if (cv.clientWidth && cv.clientHeight) drawPreview(cv, t.dataset.type, {}, t.dataset.sub);
   }
 });
+// Palette: Suche, „Zuletzt benutzt“ und einklappbare Kategorien (Zustand wird gemerkt)
+const PAL_KEY = STORE + '.palette';
+const CLOSED_DEFAULT = ['Arithmetik', 'Speicher', 'Leitungen', 'Schalter & Transistoren', 'Anzeigen & Terminal', 'Simulation', 'Sonstiges'];
+let palState = { closed: CLOSED_DEFAULT, recent: [] };
+try { palState = { ...palState, ...JSON.parse(localStorage.getItem(PAL_KEY) || '{}') }; } catch { }
+const savePal = () => { try { localStorage.setItem(PAL_KEY, JSON.stringify(palState)); } catch { } };
+let palQuery = '';
+
 function buildPalette() {
   const pal = $('#palette');
   tileRO.disconnect();
   pal.innerHTML = '';
-  const section = (title, items, extra) => {
-    const h = document.createElement('h3'); h.textContent = title; pal.appendChild(h);
-    const grid = document.createElement('div'); grid.className = 'tiles'; pal.appendChild(grid);
+  // Suchfeld bleibt oben stehen
+  const search = document.createElement('div'); search.className = 'pal-search';
+  search.innerHTML = '<input type="search" placeholder="Bauteil suchen …" autocomplete="off" spellcheck="false" aria-label="Bauteil suchen">';
+  pal.appendChild(search);
+  const inp = search.firstChild; inp.value = palQuery;
+  inp.oninput = () => { palQuery = inp.value; filterPalette(); };
+  const section = (key, title, items, extra, collapsible = true) => {
+    const sec = document.createElement('section'); sec.className = 'pal-sec'; sec.dataset.key = key;
+    if (collapsible && palState.closed.includes(key)) sec.classList.add('closed');
+    const h = document.createElement('h3');
+    h.innerHTML = `<span>${esc(title)}</span>${collapsible ? `<small>${items.length}</small><i class="chev"></i>` : ''}`;
+    if (collapsible) {
+      h.className = 'toggle'; h.setAttribute('role', 'button');
+      h.onclick = () => {
+        const closed = sec.classList.toggle('closed');
+        palState.closed = closed ? [...new Set([...palState.closed, key])] : palState.closed.filter(k => k !== key);
+        savePal();
+      };
+    }
+    sec.appendChild(h);
+    const grid = document.createElement('div'); grid.className = 'tiles'; sec.appendChild(grid);
     for (const it of items) {
       const t = document.createElement('div'); t.className = 'tile'; t.dataset.type = it.type;
+      t.dataset.search = (it.name + ' ' + it.type + ' ' + (it.sub || '')).toLowerCase();
       if (it.sub) t.dataset.sub = it.sub;
       const cv = document.createElement('canvas'); const sp = document.createElement('span'); sp.textContent = it.name;
       t.append(cv, sp); grid.appendChild(t);
       setupTileDrag(t, it.type, it.sub);
       tileRO.observe(cv);
     }
-    if (extra) pal.insertAdjacentHTML('beforeend', extra);
+    if (extra) sec.insertAdjacentHTML('beforeend', extra);
+    pal.appendChild(sec);
   };
   const subs = [...library.keys()].filter(n => n !== current && !usesCircuit(n, current) && (() => { const i = subInterface(library.get(n)); return i.ins.length + i.outs.length > 0; })());
-  section('Eigene Bausteine', subs.map(n => ({ type: 'Sub', sub: n, name: n })),
-    subs.length ? '' : '<p class="pal-hint">Jede andere Schaltung deines Projekts lässt sich hier als Baustein einsetzen. Tippe oben auf den Schaltungsnamen, um eine weitere anzulegen.</p>');
-  for (const cat of CATEGORIES) section(cat, DEFS.filter(d => d.cat === cat));
+  section('own', 'Eigene Bausteine', subs.map(n => ({ type: 'Custom', sub: n, name: n })),
+    subs.length ? '' : '<p class="pal-hint">Weitere Schaltungen des Projekts erscheinen hier als Bausteine (oben auf den Schaltungsnamen tippen).</p>', false);
+  const recent = palState.recent.filter(t => DEF[t]?.cat);
+  if (recent.length) section('recent', 'Zuletzt benutzt', recent.map(t => DEFS.find(d => d.type === t)), '', false);
+  for (const cat of CATEGORIES) section(cat, cat, DEFS.filter(d => d.cat === cat));
   // 74xx-Bibliothek (aus Digital)
-  const h = document.createElement('h3'); h.textContent = '74xx-Bibliothek'; pal.appendChild(h);
+  const lib = document.createElement('section'); lib.className = 'pal-sec'; lib.dataset.key = 'chips';
+  lib.innerHTML = '<h3><span>74xx-Bibliothek</span></h3>';
   const b = document.createElement('button'); b.className = 'btn lib-btn'; b.innerHTML = '<b>74xx-Chips</b><small>über 100 Bausteine aus Digital</small>';
-  b.onclick = showChipLibrary; pal.appendChild(b);
+  b.onclick = showChipLibrary; lib.appendChild(b); pal.appendChild(lib);
+  pal.insertAdjacentHTML('beforeend', '<p class="pal-empty" hidden>Kein Bauteil gefunden.</p>');
+  filterPalette();
+}
+// Suche: passende Kacheln zeigen (auch in eingeklappten Kategorien), „Zuletzt benutzt“ ausblenden
+function filterPalette() {
+  const pal = $('#palette'), q = palQuery.trim().toLowerCase();
+  pal.classList.toggle('searching', !!q);
+  let any = false;
+  for (const sec of pal.querySelectorAll('.pal-sec')) {
+    let n = 0;
+    for (const t of sec.querySelectorAll('.tile')) { const hit = !q || t.dataset.search.includes(q); t.hidden = !hit; if (hit) n++; }
+    const hide = q && (sec.dataset.key === 'recent' || (sec.dataset.key === 'chips' ? !'74xx chips bibliothek'.includes(q) && !/^74/.test(q) : !n));
+    sec.hidden = !!hide; if (!hide) any = true;
+  }
+  pal.querySelector('.pal-empty').hidden = any;
+}
+function noteRecent(type) {
+  if (!DEF[type]?.cat) return;
+  const next = [type, ...palState.recent.filter(t => t !== type)].slice(0, 6);
+  // nur neu aufbauen, wenn sich die Auswahl ändert (Reihenfolge allein genügt nicht)
+  const changed = next.length !== palState.recent.length || next.some(t => !palState.recent.includes(t));
+  palState.recent = next; savePal();
+  if (changed) { const pal = $('#palette'), top = pal.scrollTop; buildPalette(); pal.scrollTop = top; }
 }
 
 // ---------- 74xx-Bibliothek ----------
@@ -184,13 +248,13 @@ async function showChipLibrary() {
     const b = e.target.closest('[data-chip]'); if (!b) return;
     const name = b.dataset.chip;
     b.disabled = true;
-    const tmp = { comps: [{ type: 'Sub', sub: name }] };
+    const tmp = { comps: [{ type: 'Custom', sub: name }] };
     const r = await ensureChips([tmp]);
     if (!getCircuit(name)) { toast(`„${name}“ konnte nicht geladen werden.`, true); b.disabled = false; return; }
     closeDialog();
     const panelOpen = $('#props').classList.contains('open');
     const pw = panelOpen ? 0 : Math.min(272, editor.w * 0.3);
-    place('Sub', editor.toWorld((editor.w - pw) / 2, editor.h / 3), name);
+    place('Custom', editor.toWorld((editor.w - pw) / 2, editor.h / 3), name);
     if (r.notFound.length) toast('Fehlende Teile: ' + r.notFound.join(', '), true);
   };
 }
@@ -229,10 +293,30 @@ function setupTileDrag(tile, type, sub) {
   tile.addEventListener('pointercancel', e => end(e, true));
 }
 function place(type, p, sub) {
-  let x = Math.round(p.x / 20) * 20, y = Math.round(p.y / 20) * 20;
-  while (circuit.comps.some(c => c.x === x && c.y === y)) { x += 40; y += 40; }
-  const c = circuit.addComp(type, x, y, JSON.parse(JSON.stringify(DEF[type].initial || {})));
+  noteRecent(type);
+  const c = circuit.addComp(type, 0, 0, JSON.parse(JSON.stringify(DEF[type].initial || {})));
   if (sub) c.sub = sub;
+  // freien Platz nahe der gewünschten Stelle suchen (nichts überdecken, keine Leitung berühren)
+  const x0 = Math.round(p.x / 20) * 20, y0 = Math.round(p.y / 20) * 20;
+  const others = circuit.comps.filter(k => k !== c).map(k => boundsWorld(k));
+  const free = (x, y) => {
+    c.x = x; c.y = y;
+    const b = boundsWorld(c), m = 20;
+    if (others.some(o => o.x0 < b.x1 + m && o.x1 > b.x0 - m && o.y0 < b.y1 + m && o.y1 > b.y0 - m)) return false;
+    const inside = (px, py) => px >= b.x0 - m && px <= b.x1 + m && py >= b.y0 - m && py <= b.y1 + m;
+    return !circuit.wires.some(w => inside(w.x1, w.y1) || inside(w.x2, w.y2) || (w.x1 === w.x2 ? w.x1 >= b.x0 - m && w.x1 <= b.x1 + m && Math.min(w.y1, w.y2) <= b.y1 && Math.max(w.y1, w.y2) >= b.y0 : w.y1 >= b.y0 - m && w.y1 <= b.y1 + m && Math.min(w.x1, w.x2) <= b.x1 && Math.max(w.x1, w.x2) >= b.x0));
+  };
+  let found = false;
+  for (let r = 0; r <= 25 && !found; r++) for (let dy = -r; dy <= r && !found; dy++) for (let dx = -r; dx <= r && !found; dx++)
+    if (Math.max(Math.abs(dx), Math.abs(dy)) === r && free(x0 + dx * 40, y0 + dy * 40)) found = true;
+  if (!found) { c.x = x0; c.y = y0; }
+  // falls außerhalb des sichtbaren Bereichs (ohne Eigenschaften-Feld): Ansicht verschieben
+  const b = boundsWorld(c), v = editor.view, pw = $('#props').offsetWidth || 0;
+  const sx0 = b.x0 * v.s + v.ox, sx1 = b.x1 * v.s + v.ox, sy0 = b.y0 * v.s + v.oy, sy1 = b.y1 * v.s + v.oy;
+  const W = editor.w - pw, H = editor.h, pad = 30;
+  if (sx0 < pad || sy0 < pad || sx1 > W - pad || sy1 > H - pad) {
+    v.ox += W / 2 - (sx0 + sx1) / 2; v.oy += H / 2 - (sy0 + sy1) / 2;
+  }
   editor.sel.clear(); editor.sel.add(c);
   commit(); renderProps();
 }
@@ -257,10 +341,16 @@ function renderProps() {
   } else {
     const c = sel[0], def = DEF[c.type], a = attrsOf(c);
     const subtitle = c.type === 'Unknown' ? 'Wird noch nicht unterstützt – bleibt beim Speichern erhalten.'
-      : c.type === 'Sub' ? (isSystem(c.sub) ? esc(getCircuit(c.sub)?.top?.Description || '74xx-Bibliothek') : 'Baustein „' + esc(c.sub) + '“') : def.cat;
-    inner.innerHTML = `<h2>${c.type === 'Sub' ? esc(c.sub) : def.name}</h2><div class="sub">${subtitle}</div>`;
+      : c.type === 'Custom' ? (isSystem(c.sub) ? esc(getCircuit(c.sub)?.top?.Description || '74xx-Bibliothek') : 'Baustein „' + esc(c.sub) + '“') : def.cat;
+    inner.innerHTML = `<h2>${c.type === 'Custom' ? esc(c.sub) : def.name}</h2><div class="sub">${subtitle}</div>`;
     for (const p of def.props) inner.appendChild(field(c, p, a));
-    if (c.type === 'Sub' && library.has(c.sub)) {
+    // generische Schaltungen: Code am Bauteil bzw. Parameter am generischen Baustein / Testfall
+    const subGen = c.type === 'Custom' && getCircuit(c.sub)?.top?.isGeneric;
+    if (subGen) inner.appendChild(field(c, DEF.Custom.genericProp, a));
+    else if (circuit.top?.isGeneric && !['GenericInitCode', 'GenericCode'].includes(c.type))
+      inner.appendChild(field(c, c.type === 'Testcase' ? { key: 'generic', label: 'Parameter für diesen Test', type: 'textarea', mono: true, hint: 'z. B. bits := 4; – leer = Standardwerte' }
+        : { key: 'generic', label: 'Generischer Code', type: 'textarea', mono: true, hint: 'z. B. this.Bits = args.bits;' }, a));
+    if (c.type === 'Custom' && library.has(c.sub)) {
       const b = document.createElement('button'); b.className = 'btn primary wide'; b.textContent = 'Baustein öffnen und bearbeiten';
       b.onclick = () => { const back = current; setCurrent(c.sub, { keepNav: true }); navStack.push(back); updateUI(); };
       inner.appendChild(b);
@@ -322,12 +412,19 @@ function field(c, p, a) {
     i.oninput = () => { const h = i.value; set({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) }, false); };
     i.onchange = () => commit();
     f.appendChild(i);
+  } else if (p.type === 'data') {
+    const n = parseData(val).length;
+    const b = document.createElement('button'); b.className = 'btn wide'; b.textContent = 'Inhalt bearbeiten …';
+    b.onclick = () => showMemory(c, false);
+    f.insertAdjacentHTML('beforeend', `<div class="hint" style="margin:0 0 6px">${n ? n + ' Werte gespeichert' : 'leer (alles 0)'}</div>`);
+    f.appendChild(b);
   } else if (p.type === 'invert') {
     const chips = document.createElement('div'); chips.className = 'chips';
     const cur = new Set(val || []);
-    for (let k = 1; k <= a.Inputs; k++) {
-      const n = 'In_' + k;
-      const b = document.createElement('button'); b.className = 'chip' + (cur.has(n) ? ' on' : ''); b.textContent = k;
+    const gates = /^(And|Or|NAnd|NOr|XOr|XNOr)$/.test(c.type);
+    const names = gates ? Array.from({ length: a.Inputs }, (_, k) => 'In_' + (k + 1)) : geoOf(c).pins.filter(q => !q.out && !q.hidden).map(q => q.n);
+    for (const n of names) {
+      const b = document.createElement('button'); b.className = 'chip' + (cur.has(n) ? ' on' : ''); b.textContent = gates ? n.slice(3) : n;
       b.onclick = () => { cur.has(n) ? cur.delete(n) : cur.add(n); set([...cur].sort()); renderProps(); };
       chips.appendChild(b);
     }
@@ -389,7 +486,7 @@ function makeModule() {
 const ONE_PIN = new Set(['Tunnel', 'In', 'Out', 'Clock', 'Const', 'Ground', 'VDD', 'Probe', 'LED', 'Button', 'PullUp', 'PullDown']);
 function changeModule(name, mutate) {
   const snap = [];
-  for (const circ of library.values()) for (const inst of circ.comps.filter(k => k.type === 'Sub' && k.sub === name)) snap.push({ circ, inst, pins: pinsWorld(inst) });
+  for (const circ of library.values()) for (const inst of circ.comps.filter(k => k.type === 'Custom' && k.sub === name)) snap.push({ circ, inst, pins: pinsWorld(inst) });
   mutate(); touchLibrary();
   for (const { circ, inst, pins } of snap) {
     const np = pinsWorld(inst);
@@ -431,7 +528,10 @@ function showModuleSettings(name = current) {
     openDialog(`<div class="dialog"><h2>„${esc(name)}“ als Baustein <button class="close">✕</button></h2>
       <div class="mod-grid"><div>
       <div class="field"><label>Beschreibung</label><input type="text" id="mDesc" value="${esc(top.Description || '')}" placeholder="z. B. Halbaddierer"></div>
-      <div class="field"><label>Form</label><div class="chips"><button class="chip ${dil ? '' : 'on'}" data-shape="DEFAULT">Rechteck</button><button class="chip ${dil ? 'on' : ''}" data-shape="DIL">DIL-Chip (wie 74xx)</button></div></div>
+      <div class="field"><label>Form</label><div class="chips">${[['DEFAULT', 'Rechteck'], ['DIL', 'DIL-Chip (wie 74xx)'], ['LAYOUT', 'Anschlüsse wie in der Schaltung'], ['MINIMIZED', 'Verkleinerte Schaltung']].map(([k, l]) => `<button class="chip ${(top.shapeType || 'DEFAULT') === k ? 'on' : ''}" data-shape="${k}">${l}</button>`).join('')}</div>
+        <div class="hint">„Anschlüsse wie in der Schaltung“: Ein- und Ausgänge erscheinen auf der Seite, zu der sie in der Schaltung zeigen (Drehung).</div></div>
+      <label class="switch"><span>Generische Schaltung (mit Parametern, z. B. Bitbreite)</span><input type="checkbox" id="mGen" ${top.isGeneric ? 'checked' : ''}></label>
+      ${top.isGeneric ? '<div class="hint" style="margin-bottom:10px">Jedes Bauteil der Schaltung bekommt ein Feld „Generischer Code“ (z. B. <code>this.Bits = args.bits;</code>). Standardwerte legt das Bauteil „Generische Initialisierung“ fest (Sonstiges), beim Einsetzen gibst du die Parameter am Baustein an (z. B. <code>bits := 8;</code>).</div>' : ''}
       <div class="field"><label>Breite</label><div class="stepper"><button data-w="-1">−</button><input type="text" value="${top.Width ?? 3}" readonly><button data-w="1">+</button></div></div>
       ${dil ? `<div class="field"><label>Anzahl Pins</label><div class="stepper"><button data-pc="-2">−</button><input type="text" value="${top.pinCount || 'auto'}" readonly><button data-pc="2">+</button></div></div>` : ''}
       <div class="field"><label>Anschlüsse</label>
@@ -439,10 +539,11 @@ function showModuleSettings(name = current) {
         <div class="hint">Die Reihenfolge entspricht der Reihenfolge, in der die Ein-/Ausgänge angelegt wurden.</div></div>
       </div><div class="mod-preview"><label>Vorschau</label><canvas id="mPrev"></canvas></div></div>
       <div class="row"><button class="btn primary" id="mDone">Fertig</button></div></div>`, true);
-    requestAnimationFrame(() => { const cv = $('#mPrev'); if (cv) drawPreview(cv, 'Sub', {}, name); });
+    requestAnimationFrame(() => { const cv = $('#mPrev'); if (cv) drawPreview(cv, 'Custom', {}, name); });
     const sh = $('#sheet');
     const changed = fn => { changeModule(name, fn); autosave(); editor.invalidate(); refreshPanel(); render(); };
     $('#mDesc').onchange = e => { top.Description = e.target.value; autosave(); };
+    $('#mGen').onchange = e => changed(() => { top.isGeneric = e.target.checked; touchGenerics(); if (e.target.checked && !c.comps.some(k => k.type === 'GenericInitCode')) toast('Füge noch das Bauteil „Generische Initialisierung“ (Sonstiges) mit Standardwerten hinzu.', false, 5000); });
     sh.querySelectorAll('[data-shape]').forEach(b => (b.onclick = () => changed(() => { top.shapeType = b.dataset.shape; })));
     sh.querySelectorAll('[data-w]').forEach(b => (b.onclick = () => changed(() => { top.Width = Math.max(2, Math.min(10, (top.Width ?? 3) + +b.dataset.w)); })));
     sh.querySelectorAll('[data-pc]').forEach(b => (b.onclick = () => changed(() => { const n = (top.pinCount || 0) + +b.dataset.pc; top.pinCount = n < 4 ? 0 : Math.min(48, n); })));
@@ -478,9 +579,15 @@ function startSim() {
       if (c.type !== 'Clock') continue;
       const a = attrsOf(c);
       if (!a.runRealTime) continue;
-      const half = 1 / (2 * Math.max(0.1, a.Frequency || 1));
-      let t = (acc.get(c.id) || 0) + dt;
-      while (t >= half) { t -= half; sim.st(c).value ^= 1; sim.update(c); recorder.sample(sim); changed = true; }
+      if (sim.paused) continue;
+      const f = Math.max(0.1, a.Frequency || 1), half = 1 / (2 * f);
+      let t = (acc.get(c.id) || 0) + dt, n = 0;
+      // schnelle Takte: höchstens ~12 ms Rechenzeit pro Durchlauf, Messgraph nur gelegentlich
+      while (t >= half) {
+        t -= half; sim.st(c).value ^= 1; sim.update(c); changed = true;
+        if (f <= 200 || ++n % Math.ceil(f / 100) === 0) recorder.sample(sim);
+        if (sim.stopRequested || sim.breakHit || performance.now() - now > 12) { t = 0; break; }
+      }
       acc.set(c.id, t);
     }
     if (changed) { checkOsc(); editor.redraw(); renderGraph(); }
@@ -488,10 +595,24 @@ function startSim() {
   editor.redraw(); updateUI(); updateFreqLabel();
 }
 function recordSample() { if (editor.sim && recorder.sample(editor.sim)) renderGraph(); }
-function checkOsc() { if (editor.sim?.oscillating) { toast('Die Schaltung schwingt (instabile Rückkopplung) – Simulation gestoppt.', true, 5000); stopSim(); } }
+function checkOsc() {
+  const sim = editor.sim; if (!sim) return;
+  if (sim.oscillating) { toast('Die Schaltung schwingt (instabile Rückkopplung) – Simulation gestoppt.', true, 5000); stopSim(); return; }
+  if (sim.stopRequested) { toast('Die Simulation wurde durch das Stopp-Element beendet.', false, 4000); stopSim(); return; }
+  const brk = sim.breakHit;
+  if (brk && !sim.paused) { sim.paused = true; toast(`Haltepunkt${attrsOf(brk).Label ? ' „' + attrsOf(brk).Label + '“' : ''} erreicht – der Takt hält an. Zum Fortsetzen den Haltepunkt antippen.`, false, 5000); updateFreqLabel(); }
+}
 function stopSim() {
   if (!editor.sim) return;
   clearInterval(clockTimer); clockTimer = null;
+  // beschriebene EEPROMs behalten ihren Inhalt (wie in Digital)
+  let kept = false;
+  for (const c of circuit.comps) {
+    const st = editor.sim.st(c);
+    if (DEF[c.type]?.hasData && st?.dirty) { c.attrs.Data = formatData(st.mem); kept = true; }
+  }
+  if (kept) commit();
+  if ($('#memView')) closeDialog();
   editor.sim = null;
   document.body.classList.remove('sim');
   $('#simLabel').textContent = 'Start';
@@ -505,15 +626,16 @@ function stepClock() {
   recordSample(); checkOsc(); editor.redraw();
 }
 
-const FREQS = [1, 2, 5, 10, 20, 50];
+const FREQS = [1, 2, 5, 10, 20, 50, 1000, 100000];
+const fLabel = f => (f >= 1000 ? f / 1000 + ' kHz' : f + ' Hz');
 function showFreq() {
   const clocks = circuit.comps.filter(c => c.type === 'Clock');
   if (!clocks.length) return toast('Die Schaltung hat keinen Takt-Eingang.');
   const cur = attrsOf(clocks[0]).Frequency || 1, auto = clocks.some(c => attrsOf(c).runRealTime);
   openDialog(`<div class="dialog"><h2>Takt <button class="close">✕</button></h2>
     <label class="switch"><span>Takt läuft automatisch</span><input type="checkbox" id="frAuto" ${auto ? 'checked' : ''}></label>
-    <div class="field" style="margin-top:12px"><label>Frequenz</label><div class="chips">${FREQS.map(f => `<button class="chip ${f === cur ? 'on' : ''}" data-f="${f}">${f} Hz</button>`).join('')}</div></div>
-    <p class="muted">Gilt für alle Takte dieser Schaltung. Ohne Automatik schaltest du den Takt mit „Takt“ von Hand weiter.</p></div>`);
+    <div class="field" style="margin-top:12px"><label>Frequenz</label><div class="chips">${FREQS.map(f => `<button class="chip ${f === cur ? 'on' : ''}" data-f="${f}">${f === 100000 ? 'max.' : fLabel(f)}</button>`).join('')}</div></div>
+    <p class="muted">Gilt für alle Takte dieser Schaltung. „max.“ rechnet so schnell wie möglich (z. B. für Grafik oder VGA). Ohne Automatik schaltest du den Takt mit „Takt“ von Hand weiter.</p></div>`);
   const apply = () => { commitQuiet(); updateFreqLabel(); };
   $('#frAuto').onchange = e => { for (const c of clocks) c.attrs.runRealTime = e.target.checked; apply(); };
   $('#sheet').querySelector('.chips').onclick = e => {
@@ -531,7 +653,8 @@ function commitQuiet() {
 function updateFreqLabel() {
   const clocks = circuit.comps.filter(c => c.type === 'Clock');
   const auto = clocks.filter(c => attrsOf(c).runRealTime);
-  $('#freqLabel').textContent = !clocks.length ? 'Takt' : auto.length ? (attrsOf(auto[0]).Frequency || 1) + ' Hz' : 'Hand';
+  const f = auto.length ? attrsOf(auto[0]).Frequency || 1 : 0;
+  $('#freqLabel').textContent = !clocks.length ? 'Takt' : editor.sim?.paused ? 'Pause' : auto.length ? (f >= 1000 ? f / 1000 + ' kHz' : f + ' Hz') : 'Hand';
   $('#btnFreq').hidden = !clocks.length;
 }
 
@@ -552,6 +675,141 @@ function askValue(c) {
     else inp.value = (inp.value === '0' ? '' : inp.value) + k;
   };
   inp.onkeydown = e => { if (e.key === 'Enter') ok(); };
+}
+
+// ---------- Anzeigen während der Simulation ----------
+function showLiveView(c) {
+  const def = DEF[c.type], a = attrsOf(c), st = editor.sim?.st(c); if (!st || !def.view) return;
+  openDialog(`<div class="dialog" id="liveView"><h2>${esc(a.Label || def.name)} <button class="close">✕</button></h2><div id="liveBody" class="live-body"></div></div>`, true);
+  const body = $('#liveBody');
+  const draw = () => { if (!$('#liveView') || !editor.sim) return clearInterval(t); def.view(body, st, a); };
+  const t = setInterval(draw, 150); draw();
+}
+function showKeyboard(c) {
+  const a = attrsOf(c), st = editor.sim?.st(c); if (!st) return;
+  openDialog(`<div class="dialog"><h2>Tastatur${a.Label ? ' ' + esc(a.Label) : ''} <button class="close">✕</button></h2>
+    <p style="margin-top:0;color:#6b7280">Getippte Zeichen kommen in den Puffer. Die Schaltung liest sie mit en = 1 und einer Taktflanke an C.</p>
+    <input type="text" id="kbIn" placeholder="hier tippen …" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <div class="row" style="display:flex;gap:8px;margin-top:8px"><button class="btn" id="kbEnter">Zeilenende ↵</button><button class="btn" id="kbClear">Puffer leeren</button></div>
+    <p>Puffer: <code id="kbBuf"></code></p></div>`);
+  const show = () => { $('#kbBuf').textContent = JSON.stringify(st.buf).slice(1, -1) || '(leer)'; };
+  const add = s => { st.buf += s; editor.sim.update(c); recordSample(); checkOsc(); editor.redraw(); show(); };
+  const inp = $('#kbIn');
+  inp.oninput = () => { if (inp.value) { add(inp.value); inp.value = ''; } };
+  inp.onkeydown = e => { if (e.key === 'Enter') { add('\n'); e.preventDefault(); } };
+  $('#kbEnter').onclick = () => add('\n');
+  $('#kbClear').onclick = () => { st.buf = ''; editor.sim.update(c); editor.redraw(); show(); };
+  show(); inp.focus();
+}
+function showRotate(c) {
+  const st = editor.sim?.st(c); if (!st) return;
+  openDialog(`<div class="dialog"><h2>Drehgeber <button class="close">✕</button></h2>
+    <div class="row" style="display:flex;gap:12px;justify-content:center"><button class="btn big" id="rotL">⟲ links</button><button class="btn big" id="rotR">rechts ⟳</button></div></div>`);
+  const turn = d => { st.pos += d; editor.sim.update(c); recordSample(); checkOsc(); editor.redraw(); };
+  $('#rotL').onclick = () => turn(-1); $('#rotR').onclick = () => turn(1);
+}
+
+// ---------- Speicherinhalt (ROM/RAM/EEPROM/LUT) ----------
+function showMemory(c, live) {
+  const a = attrsOf(c), g = geoOf(c), def = DEF[c.type];
+  const size = g.size || 16, bits = a.Bits || 8, m = mask(bits);
+  const st = live ? editor.sim?.st(c) : null;
+  if (live && !st) return;
+  const data = live ? st.mem : parseData(a.Data);
+  let fmt = a.intFormat === 'def' ? 'def' : a.intFormat === 'bin' ? 'bin' : 'hex';
+  const per = fmt === 'bin' ? 4 : 8, pageSize = 256;
+  let page = 0;
+  const hexW = Math.ceil(bits / 4), addrW = Math.max(1, Math.ceil(Math.log2(size) / 4));
+  const show = v => (fmt === 'hex' ? (v || 0).toString(16).toUpperCase().padStart(hexW, '0') : fmt === 'bin' ? (v || 0).toString(2).padStart(bits, '0') : String(v || 0));
+  const parseCell = s => { s = s.trim(); if (!s) return 0; return fmt === 'hex' ? parseInt(s, 16) : fmt === 'bin' ? parseInt(s, 2) : parseNum(s); };
+  const title = (a.Label ? a.Label + ' – ' : '') + def.name;
+  openDialog(`<div class="dialog mem" id="memView"><h2>${esc(title)} <button class="close">✕</button></h2>
+    <p style="margin-top:0;color:#6b7280">${size} Wörter × ${bits} Bit${live ? ' · aktueller Inhalt während der Simulation' : ''}. Werte antippen und ändern.</p>
+    <div class="chips" id="memFmt">${[['hex', 'Hex'], ['def', 'Dezimal'], ['bin', 'Binär']].map(([k, l]) => `<button class="chip${k === fmt ? ' on' : ''}" data-f="${k}">${l}</button>`).join('')}</div>
+    <div class="mem-grid" id="memGrid"></div>
+    <div class="mem-pages" id="memPages"></div>
+    ${live ? '' : `<div class="row" style="margin-top:10px;gap:8px;display:flex;flex-wrap:wrap">
+      <button class="btn" id="memImport">Datei laden (.hex/.bin/.txt)</button><button class="btn" id="memExport">Als Text speichern</button>
+      <button class="btn red" id="memClear">Alles löschen</button><button class="btn primary" id="memOk" style="margin-left:auto">Übernehmen</button></div>`}
+    </div>`);
+  const render = () => {
+    const grid = $('#memGrid'); if (!grid) return;
+    const start = page * pageSize, end = Math.min(size, start + pageSize);
+    let h = '<table><tbody>';
+    for (let r = start; r < end; r += per) {
+      h += `<tr><th>${r.toString(16).toUpperCase().padStart(addrW, '0')}</th>`;
+      for (let k = r; k < Math.min(end, r + per); k++) h += `<td><input data-i="${k}" value="${show(data[k])}" inputmode="${fmt === 'def' ? 'numeric' : 'text'}" autocapitalize="off" spellcheck="false"></td>`;
+      h += '</tr>';
+    }
+    grid.innerHTML = h + '</tbody></table>';
+    const pages = Math.ceil(size / pageSize);
+    $('#memPages').innerHTML = pages > 1 ? Array.from({ length: Math.min(pages, 64) }, (_, i) => `<button class="chip${i === page ? ' on' : ''}" data-p="${i}">${(i * pageSize).toString(16).toUpperCase()}</button>`).join('') + (pages > 64 ? ' …' : '') : '';
+  };
+  render();
+  $('#memPages').onclick = e => { if (e.target.dataset.p) { page = +e.target.dataset.p; render(); } };
+  $('#memFmt').onclick = e => { const f = e.target.dataset.f; if (!f) return; fmt = f; $('#memFmt').querySelectorAll('.chip').forEach(b => b.classList.toggle('on', b.dataset.f === f)); render(); };
+  $('#memGrid').addEventListener('change', e => {
+    const i = +e.target.dataset.i; const v = parseCell(e.target.value);
+    if (v == null || Number.isNaN(v)) { e.target.value = show(data[i]); return toast('Ungültiger Wert', true); }
+    data[i] = v % (m + 1); e.target.value = show(data[i]);
+    if (live) { if (def.hasData) st.dirty = true; editor.sim.update(c); recordSample(); editor.redraw(); }
+  });
+  if (live) {
+    // während der Simulation regelmäßig auffrischen (nicht das Feld, das gerade bearbeitet wird)
+    const t = setInterval(() => {
+      if (!$('#memView') || !editor.sim) return clearInterval(t);
+      $('#memGrid').querySelectorAll('input').forEach(inp => { if (inp !== document.activeElement) { const v = show(data[+inp.dataset.i]); if (inp.value !== v) inp.value = v; } });
+    }, 250);
+    return;
+  }
+  $('#memOk').onclick = () => { c.attrs.Data = formatData(data); commit(); renderProps(); closeDialog(); };
+  $('#memClear').onclick = () => { data.length = 0; render(); };
+  $('#memExport').onclick = () => download(new File(['v2.0 raw\n' + Array.from({ length: Math.max(1, data.length) }, (_, i) => (data[i] || 0).toString(16)).join('\n') + '\n'], (a.Label || c.type) + '.hex', { type: 'text/plain' }));
+  $('#memImport').onclick = () => {
+    const fi = document.createElement('input'); fi.type = 'file'; fi.accept = '.hex,.bin,.txt,.dat,.ihex';
+    fi.onchange = async () => {
+      const f = fi.files[0]; if (!f) return;
+      const buf = new Uint8Array(await f.arrayBuffer());
+      const vals = importMemory(f.name, buf, bits);
+      data.length = 0; vals.slice(0, size).forEach((v, i) => (data[i] = v % (m + 1)));
+      render(); toast(`${Math.min(vals.length, size)} Werte geladen.`);
+    };
+    fi.click();
+  };
+}
+// Speicherdateien: Intel-HEX, Logisim "v2.0 raw", Text mit Hex-Werten oder Binärdaten
+function importMemory(name, buf, bits) {
+  const text = new TextDecoder().decode(buf);
+  const out = [];
+  const bytesPerWord = Math.ceil(bits / 8);
+  if (/^\s*:[0-9A-Fa-f]{10}/.test(text)) {
+    const bytes = []; let base = 0;
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.startsWith(':')) continue;
+      const n = parseInt(line.substr(1, 2), 16), addr = parseInt(line.substr(3, 4), 16), type = parseInt(line.substr(7, 2), 16);
+      if (type === 0) for (let i = 0; i < n; i++) bytes[base + addr + i] = parseInt(line.substr(9 + 2 * i, 2), 16);
+      else if (type === 2) base = parseInt(line.substr(9, 4), 16) * 16;
+      else if (type === 4) base = parseInt(line.substr(9, 4), 16) * 65536;
+    }
+    for (let i = 0; i < bytes.length; i += bytesPerWord) { let v = 0; for (let k = 0; k < bytesPerWord; k++) v += (bytes[i + k] || 0) * 256 ** k; out.push(v); }
+    return out;
+  }
+  const printable = buf.every(b => b === 9 || b === 10 || b === 13 || (b >= 32 && b < 127));
+  if (printable && !/\.bin$/i.test(name)) {
+    for (let line of text.split(/\r?\n/)) {
+      line = line.replace(/#.*/, '').trim();
+      if (!line || /^v2\.0/i.test(line)) continue;
+      for (const tok of line.split(/[\s,;]+/)) {
+        if (!tok) continue;
+        const mm = tok.match(/^(\d+)\*([0-9a-fA-F]+)$/);
+        if (mm) for (let i = 0; i < +mm[1]; i++) out.push(parseInt(mm[2], 16));
+        else out.push(parseInt(tok.replace(/^0x/i, ''), 16) || 0);
+      }
+    }
+    return out;
+  }
+  for (let i = 0; i < buf.length; i += bytesPerWord) { let v = 0; for (let k = 0; k < bytesPerWord; k++) v += (buf[i + k] || 0) * 256 ** k; out.push(v); }
+  return out;
 }
 
 // ---------- Messgraph ----------
@@ -653,7 +911,10 @@ function showMenu() {
     <h3>Datei</h3><div class="menu-list">
       ${item('open', '📂', 'Öffnen …', '.dig- oder .zip-Dateien, auch mehrere')}
       ${item('save', '💾', 'Speichern …', 'Als .dig sichern oder teilen')}
+    </div>
+    <h3>Exportieren</h3><div class="menu-list">
       ${item('png', '🖼', 'Als Bild', 'PNG der aktuellen Ansicht')}
+      ${item('hdl', '⌨', 'Als Verilog / VHDL', 'Hardwarebeschreibung der Schaltung')}
     </div>
     <h3>Projekt <span class="h3-sub">„${esc(current)}“ · ${library.size} Schaltung${library.size > 1 ? 'en' : ''}</span></h3><div class="menu-list">
       ${item('new', '＋', 'Neue Schaltung', 'Im Projekt – nutzbar als Baustein')}
@@ -687,6 +948,7 @@ function showMenu() {
       case 'ttedit': showTTEditor(); break;
       case 'fsm': closeDialog(); openFsm(); break;
       case 'png': exportPng(); closeDialog(); break;
+      case 'hdl': closeDialog(); showHdl(); break;
       case 'newproj': confirmDialog('Alle Schaltungen dieses Projekts schließen? Nicht gespeicherte Arbeit geht verloren.', 'Neues Projekt', () => {
         library.clear(); library.set('Schaltung', new Circuit()); touchLibrary(); setCurrent('Schaltung');
       }); break;
@@ -749,6 +1011,22 @@ function download(file) {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 5000);
 }
+// Verilog / VHDL anzeigen, kopieren, speichern
+async function showHdl(lang = 'verilog') {
+  const { toVerilog, toVHDL } = await import('./hdl.js');
+  let text, err = null;
+  try { text = lang === 'verilog' ? toVerilog(circuit, current) : toVHDL(circuit, current); } catch (e) { err = e.message; }
+  openDialog(`<div class="dialog"><h2>Hardwarebeschreibung <button class="close">✕</button></h2>
+    <div class="chips" id="hdlLang"><button class="chip ${lang === 'verilog' ? 'on' : ''}" data-l="verilog">Verilog</button><button class="chip ${lang === 'vhdl' ? 'on' : ''}" data-l="vhdl">VHDL</button></div>
+    ${err ? `<div class="note">${esc(err)}</div>` : `<pre class="hdl">${esc(text)}</pre>
+    <div class="row" style="display:flex;gap:8px;margin-top:10px"><button class="btn" id="hdlCopy">Kopieren</button><button class="btn primary" id="hdlSave">Speichern (.${lang === 'verilog' ? 'v' : 'vhd'})</button></div>`}
+    <p class="muted">Bausteine werden aufgelöst (eine flache Beschreibung). Schalter, Transistoren und Anzeigen-Geräte haben keine Entsprechung.</p></div>`, true);
+  $('#hdlLang').onclick = e => { const l = e.target.dataset.l; if (l && l !== lang) showHdl(l); };
+  if (err) return;
+  $('#hdlCopy').onclick = async () => { try { await navigator.clipboard.writeText(text); toast('Kopiert.'); } catch { toast('Kopieren nicht möglich', true); } };
+  $('#hdlSave').onclick = () => download(new File([text], current.replace(/[^\w-]+/g, '_') + (lang === 'verilog' ? '.v' : '.vhd'), { type: 'text/plain' }));
+}
+
 function exportPng() {
   const sel = new Set(editor.sel); editor.sel.clear(); editor.render();
   editor.cv.toBlob(b => { download(new File([b], current + '.png', { type: 'image/png' })); editor.sel = sel; editor.redraw(); });
@@ -773,11 +1051,11 @@ $('#fileInput').addEventListener('change', async e => {
     for (const [n, c] of Object.entries(loaded)) library.set(n, c);
     touchLibrary();
     const names = Object.keys(loaded);
-    const main = names.find(n => !names.some(m => m !== n && loaded[m].comps.some(k => k.type === 'Sub' && k.sub === n))) || names[0];
+    const main = names.find(n => !names.some(m => m !== n && loaded[m].comps.some(k => k.type === 'Custom' && k.sub === n))) || names[0];
     // Bausteine aus der 74xx-Bibliothek nachladen
     await ensureChips(Object.values(loaded));
     const missing = new Set();
-    for (const c of Object.values(loaded)) for (const k of c.comps) if (k.type === 'Sub' && !getCircuit(k.sub)) missing.add(k.sub);
+    for (const c of Object.values(loaded)) for (const k of c.comps) if (k.type === 'Custom' && !getCircuit(k.sub)) missing.add(k.sub);
     for (const c of sysLib.values()) for (const k of c.comps) if (k.type === 'Unknown') unknown.add(k.attrs.elementName);
     setCurrent(main);
     if (missing.size) toast('Es fehlen Bausteine: ' + [...missing].join(', ') + ' – bitte die .dig-Dateien mit auswählen.', true, 7000);
@@ -819,7 +1097,7 @@ function showTable(refresh = false) {
   const exprList = list => list.map(e => `<div class="expr"><b>${esc(e.name)}</b> = ${exprHTML(e)}</div>`).join('');
   const expr = !tableFill && t.expressions?.length ? '<h3>Disjunktive Minimalform (DMF)</h3>' + exprList(t.expressions)
     + (t.stepExpressions?.length ? '<details class="steps-dmf"><summary>DMF der Zwischenschritte</summary>' + exprList(t.stepExpressions) + '</details>' : '') : '';
-  const hasGates = circuit.comps.some(c => GATE_TYPES.includes(c.type) || c.type === 'Sub');
+  const hasGates = circuit.comps.some(c => GATE_TYPES.includes(c.type) || c.type === 'Custom');
   const kvOk = !tableFill && t.expressions?.some(e => e.vars.length >= 2 && e.vars.length <= 4);
   const root = openPanel(`<div class="dialog"><h2>Wahrheitstabelle <button class="close">✕</button></h2>
     ${t.sequential ? '<div class="note">Die Schaltung enthält Speicherglieder oder Takte. Die Tabelle zeigt nur das Verhalten ausgehend vom aktuellen Zustand.</div>' : ''}
@@ -1198,4 +1476,4 @@ function migrateComparators(c) {
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 
 // zum Testen
-window.__app = { showModuleSettings, getLib: () => import('./lib.js'), showTTEditor, showStateAnalysis, openFsm, get fsmEditor() { return fsmEditor; }, editor, get circuit() { return circuit; }, get current() { return current; }, library, setCurrent, addDoc, loadExample, parseDig, writeDig, startSim, stopSim, Circuit, recorder, runAllTests, showTable, showKV, showFormula, toggleGraph };
+window.__app = { showModuleSettings, renderProps, showMemory, showHdl, getLib: () => import('./lib.js'), showTTEditor, showStateAnalysis, openFsm, get fsmEditor() { return fsmEditor; }, editor, get circuit() { return circuit; }, get current() { return current; }, library, setCurrent, addDoc, loadExample, parseDig, writeDig, startSim, stopSim, Circuit, recorder, runAllTests, showTable, showKV, showFormula, toggleGraph };

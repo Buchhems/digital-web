@@ -1,10 +1,11 @@
+import { touchGenerics } from './generics.js';
 // Bibliothek der Schaltungen eines Projekts (für Teilschaltungen/Bausteine)
 // plus Systembibliothek (74xx-Chips aus "Digital", werden bei Bedarf nachgeladen)
 export const library = new Map(); // Name -> Circuit (Schaltungen des Projekts)
 export const sysLib = new Map();  // Name -> Circuit (74xx-Bibliothek)
 let version = 0;
 export const libVersion = () => version;
-export const touchLibrary = () => { version++; };
+export const touchLibrary = () => { version++; touchGenerics(); };
 export const getCircuit = name => library.get(name) || sysLib.get(name);
 export const isSystem = name => !library.has(name) && sysLib.has(name);
 
@@ -15,14 +16,14 @@ export function usesCircuit(name, target, seen = new Set()) {
   seen.add(name);
   const c = getCircuit(name);
   if (!c) return false;
-  return c.comps.some(k => k.type === 'Sub' && usesCircuit(k.sub, target, seen));
+  return c.comps.some(k => k.type === 'Custom' && usesCircuit(k.sub, target, seen));
 }
 
 // Alle (transitiv) benutzten Bausteine des Projekts (ohne Systembibliothek)
 export function dependencies(name, out = new Set()) {
   const c = getCircuit(name);
   if (!c) return out;
-  for (const k of c.comps) if (k.type === 'Sub' && !out.has(k.sub)) {
+  for (const k of c.comps) if (k.type === 'Custom' && !out.has(k.sub)) {
     if (library.has(k.sub)) { out.add(k.sub); dependencies(k.sub, out); }
   }
   return out;
@@ -45,7 +46,7 @@ export async function loadMissing(circuits, parse) {
   while (queue.length) {
     const c = queue.shift();
     for (const k of c.comps) {
-      if (k.type !== 'Sub' || getCircuit(k.sub)) continue;
+      if (k.type !== 'Custom' || getCircuit(k.sub)) continue;
       const e = byName.get(k.sub.toLowerCase());
       if (!e) { notFound.add(k.sub); continue; }
       try {

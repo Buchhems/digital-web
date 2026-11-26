@@ -10,6 +10,13 @@ const TYPES = {
   Color: 'awt-color', intFormat: 'intFormat', inverterConfig: 'inverterConfig', InDefault: 'value',
   pinNumber: 'string', segSize: 'int', commonCathode: 'boolean', commonConnectionType: 'enum', invertDriverOutput: 'boolean',
   inputBits: 'int', Signed: 'boolean', isHighZ: 'boolean', outputBits: 'int', delayTime: 'int', Default: 'int', pinCount: 'int', shapeType: 'enum',
+  mirror: 'boolean', Closed: 'boolean', Blown: 'boolean', poles: 'int', relayNormallyClosed: 'boolean', unidirectional: 'boolean', switchActsAsInput: 'boolean',
+  maxValue: 'int', remainderPositive: 'boolean', barrelSigned: 'boolean', direction: 'enum', barrelShifterMode: 'enum',
+  AddrBits: 'int', Data: 'data', isProgramMemory: 'boolean',
+  dipDefault: 'boolean', Size: 'int', rowDataBits: 'int', colAddrBits: 'int', ledPersistence: 'boolean', termWidth: 'int', termHeight: 'int',
+  graphicWidth: 'int', graphicHeight: 'int', timerDelay: 'int', invertOutput: 'boolean', enabled: 'boolean', Cycles: 'int',
+  RectWidth: 'int', RectHeight: 'int', RectInside: 'boolean', RectBottom: 'boolean', RectRight: 'boolean', fontSize: 'int',
+  microStep: 'boolean', maxStepCount: 'int', generic: 'string',
 };
 
 export function parseDig(text) {
@@ -27,7 +34,7 @@ export function parseDig(text) {
     const top = {};
     for (const entry of topAttr.children) {
       const [k, v] = entry.children; if (!k || !v) continue;
-      if (['Width', 'shapeType', 'pinCount', 'Description'].includes(k.textContent)) top[k.textContent] = readValue(v);
+      if (['Width', 'Height', 'shapeType', 'pinCount', 'Description', 'isGeneric'].includes(k.textContent)) top[k.textContent] = readValue(v);
     }
     if (Object.keys(top).length) c.top = top;
   }
@@ -50,7 +57,7 @@ export function parseDig(text) {
       attrs[key] = val;
     }
     let type = name, sub = null;
-    if (/\.dig$/i.test(name)) { type = 'Sub'; sub = subName(name); }
+    if (/\.dig$/i.test(name)) { type = 'Custom'; sub = subName(name); }
     else if (!DEF[name]) { unknown.add(name); type = 'Unknown'; attrs.elementName = name; }
     const comp = c.addComp(type, x, y, attrs, rotation);
     if (raw.length) comp.raw = raw;
@@ -76,6 +83,7 @@ function readValue(v) {
     }
     case 'inverterConfig': return [...v.children].map(s => s.textContent);
     case 'value': return Number(v.getAttribute('v') || 0);
+    case 'data': return v.textContent.trim();
     case 'testData': return v.querySelector('dataString')?.textContent ?? '';
     case 'commonConnectionType': case 'shapeType': return v.textContent.trim();
     default: return undefined;
@@ -95,6 +103,7 @@ function writeValue(key, val) {
     case 'inverterConfig': return `<inverterConfig>${val.map(s => `<string>${esc(s)}</string>`).join('')}</inverterConfig>`;
     case 'value': return `<value v="${Math.round(val)}" z="false"/>`;
     case 'enum': return `<${key}>${esc(val)}</${key}>`;
+    case 'data': return `<data>${esc(val)}</data>`;
     case 'testData': return `<testData>\n          <dataString>${esc(val)}</dataString>\n        </testData>`;
     default: return null;
   }
@@ -106,7 +115,7 @@ export function writeDig(circuit) {
   L.push('  <visualElements>');
   for (const c of circuit.comps) {
     const def = DEF[c.type];
-    const name = c.type === 'Unknown' ? c.attrs.elementName : c.type === 'Sub' ? c.sub + '.dig' : c.type;
+    const name = c.type === 'Unknown' ? c.attrs.elementName : c.type === 'Custom' ? c.sub + '.dig' : c.type;
     L.push('    <visualElement>', `      <elementName>${esc(name)}</elementName>`);
     const entries = [];
     if (c.rot) entries.push(`      <entry>\n        <string>rotation</string>\n        <rotation rotation="${c.rot}"/>\n      </entry>`);
@@ -133,7 +142,7 @@ export function writeDig(circuit) {
 export const subName = n => n.split(/[\\/]/).pop().replace(/\.dig$/i, '');
 
 // <attributes> der Schaltung: vorhandene (unbekannte) Einträge behalten, Gestalt als Baustein aktualisieren
-const TOP_TYPES = { shapeType: 'enum', Width: 'int', pinCount: 'int', Description: 'string' };
+const TOP_TYPES = { shapeType: 'enum', Width: 'int', Height: 'int', pinCount: 'int', Description: 'string', isGeneric: 'boolean' };
 function topAttributes(circuit) {
   const top = circuit.top || {};
   const keep = [];
@@ -148,8 +157,8 @@ function topAttributes(circuit) {
   const own = [];
   for (const [k, t] of Object.entries(TOP_TYPES)) {
     const v = top[k];
-    if (v == null || v === '' || (k === 'shapeType' && v === 'DEFAULT') || (k === 'pinCount' && !v)) continue;
-    const xml = t === 'enum' ? `<${k}>${esc(v)}</${k}>` : t === 'int' ? `<int>${Math.round(v)}</int>` : `<string>${esc(v)}</string>`;
+    if (v == null || v === '' || v === false || (k === 'shapeType' && v === 'DEFAULT') || (k === 'pinCount' && !v)) continue;
+    const xml = t === 'enum' ? `<${k}>${esc(v)}</${k}>` : t === 'int' ? `<int>${Math.round(v)}</int>` : t === 'boolean' ? `<boolean>${!!v}</boolean>` : `<string>${esc(v)}</string>`;
     own.push(`<entry>\n      <string>${k}</string>\n      ${xml}\n    </entry>`);
   }
   const all = [...keep, ...own];

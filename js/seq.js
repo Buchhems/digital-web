@@ -144,11 +144,28 @@ export function fsmTable(fsm) {
       if (targets.length > 1) problems.push(`Zustand „${s.name}“ bei ${fsm.inputs.map((n, i) => n + '=' + ((x >> (m - 1 - i)) & 1)).join(', ') || 'jeder Eingabe'}: mehrere Übergänge treffen zu.`);
       const stay = !targets.length;
       const to = stay ? s : states.find(z => z.id === targets[0]);
-      rows.push({ from: s, code, x, inBits: bitsOf(x, m), to, next: states.indexOf(to), stay, outs: fsm.outputs.map(o => (s.out?.[o] ? 1 : 0)) });
+      // Mealy: Ausgänge am Übergang kommen zu denen des Zustands hinzu
+      const tr = hits[0];
+      if (hits.length > 1) for (const o of fsm.outputs) if (hits.some(h => !!h.out?.[o] !== !!tr.out?.[o])) problems.push(`Zustand „${s.name}“: zutreffende Übergänge setzen „${o}“ verschieden.`);
+      rows.push({ from: s, code, x, inBits: bitsOf(x, m), to, next: states.indexOf(to), stay, outs: fsm.outputs.map(o => (s.out?.[o] || tr?.out?.[o] ? 1 : 0)) });
     }
   });
-  return { states, k, qn, rows, problems: [...new Set(problems)] };
+  const mealy = isMealy(fsm);
+  const ff = ['JK', 'T'].includes(fsm.ffType) ? fsm.ffType : 'D';
+  // Ansteuerung der Flipflops je Zeile (X = egal)
+  const excNames = ff === 'JK' ? qn.flatMap(q => ['J' + q.slice(1), 'K' + q.slice(1)]) : qn.map(q => ff + q.slice(1));
+  for (const r of rows) {
+    r.exc = [];
+    for (let i = 0; i < k; i++) {
+      const b = k - 1 - i, q = (r.code >> b) & 1, qp = (r.next >> b) & 1;
+      if (ff === 'D') r.exc.push(qp);
+      else if (ff === 'T') r.exc.push(q ^ qp);
+      else r.exc.push(q ? 'X' : qp, q ? 1 - qp : 'X');
+    }
+  }
+  return { states, k, qn, rows, mealy, ff, excNames, problems: [...new Set(problems)] };
 }
+export const isMealy = fsm => fsm.trans.some(t => Object.values(t.out || {}).some(Boolean));
 
 export function fsmCircuit(fsm) {
   const t = fsmTable(fsm);
@@ -163,13 +180,19 @@ export function fsmCircuit(fsm) {
     return r ? fn(r) : 'X';
   });
   const defs = [];
-  for (let i = 0; i < k; i++) {
-    const e = columnExpr('D' + (k - 1 - i), vars, val(r => (r.next >> (k - 1 - i)) & 1));
-    defs.push({ name: 'D' + (k - 1 - i), ast: termsToAST(e.terms, vars.length, vars), expr: e });
-  }
+  t.excNames.forEach((name, j) => {
+    const e = columnExpr(name, vars, val(r => r.exc[j]));
+    defs.push({ name, ast: termsToAST(e.terms, vars.length, vars), expr: e });
+  });
   for (const [j, o] of fsm.outputs.entries()) {
-    const e = columnExpr(o, qn, Array.from({ length: 2 ** k }, (_, code) => (code < states.length ? (states[code].out?.[o] ? 1 : 0) : 'X')));
-    defs.push({ name: o, ast: termsToAST(e.terms, qn.length, qn), expr: e });
+    if (t.mealy) {
+      // Mealy: Ausgang hängt von Zustand und Eingängen ab
+      const e = columnExpr(o, vars, val(r => r.outs[j]));
+      defs.push({ name: o, ast: termsToAST(e.terms, vars.length, vars), expr: e });
+    } else {
+      const e = columnExpr(o, qn, Array.from({ length: 2 ** k }, (_, code) => (code < states.length ? (states[code].out?.[o] ? 1 : 0) : 'X')));
+      defs.push({ name: o, ast: termsToAST(e.terms, qn.length, qn), expr: e });
+    }
   }
   // Eingänge, die nirgends vorkommen, trotzdem als Schalter anlegen
   const c = buildCircuit(defs);
@@ -177,26 +200,27 @@ export function fsmCircuit(fsm) {
   for (const comp of [...c.comps]) {
     const a = comp.attrs;
     if (comp.type === 'In' && qn.includes(a.Label)) { comp.type = 'Tunnel'; comp.attrs = { NetName: a.Label }; comp.rot = 2; }
-    if (comp.type === 'Out' && /^D\d+$/.test(a.Label) && defs.some(d => d.name === a.Label)) { comp.type = 'Tunnel'; comp.attrs = { NetName: a.Label }; comp.rot = 0; }
+    if (comp.type === 'Out' && t.excNames.includes(a.Label)) { comp.type = 'Tunnel'; comp.attrs = { NetName: a.Label }; comp.rot = 0; }
   }
   const used = new Set(defs.flatMap(d => [...variables(d.ast)]));
   let maxY = Math.max(0, ...c.comps.map(k => k.y), ...c.wires.map(w => Math.max(w.y1, w.y2)));
   fsm.inputs.filter(n => !used.has(n)).forEach(n => { maxY += 40; c.addComp('In', 60, maxY, { Label: n }); });
-  const x = 260, y0 = maxY + 100;
-  const clk = c.addComp('Clock', x - 80, y0 + 20, { Label: 'C', Frequency: 1, runRealTime: false });
+  const x = 260, y0 = maxY + 100, ff = t.ff, step = ff === 'JK' ? 100 : 80;
+  c.addComp('Clock', x - 80, y0 + 20, { Label: 'C', Frequency: 1, runRealTime: false });
   qn.forEach((q, i) => {
-    const y = y0 + i * 80;
-    c.addComp('D_FF', x, y, { Label: q });
-    c.addComp('Tunnel', x - 40, y, { NetName: 'D' + q.slice(1) }, 2);
-    c.addWire(x - 40, y, x, y);
+    const y = y0 + i * step, n = q.slice(1);
+    const type = ff === 'JK' ? 'JK_FF' : ff === 'T' ? 'T_FF' : 'D_FF';
+    c.addComp(type, x, y, { Label: q });
+    // Ansteuer-Eingänge über Tunnel: D bzw. T oben, beim JK-Flipflop J oben und K unten
+    const ins = ff === 'JK' ? [['J' + n, 0], ['K' + n, 40]] : [[ff + n, 0]];
+    for (const [name, dy] of ins) { c.addComp('Tunnel', x - 40, y + dy, { NetName: name }, 2); c.addWire(x - 40, y + dy, x, y + dy); }
     c.addComp('Tunnel', x + 100, y, { NetName: q });
     c.addWire(x + 60, y, x + 100, y);
     if (i === 0) c.addWire(x - 80, y + 20, x, y + 20);
     else c.addWire(x - 20, y + 20, x, y + 20);
   });
-  if (k > 1) c.addWire(x - 20, y0 + 20, x - 20, y0 + (k - 1) * 80 + 20);
-  c.addComp('Text', x - 80, y0 - 60, { Description: 'Zustandsspeicher (Startzustand „' + states[0].name + '“ = ' + '0'.repeat(k) + ')' });
-  void clk;
+  if (k > 1) c.addWire(x - 20, y0 + 20, x - 20, y0 + (k - 1) * step + 20);
+  c.addComp('Text', x - 80, y0 - 60, { Description: `Zustandsspeicher mit ${ff}-Flipflops (Startzustand „${states[0].name}“ = ${'0'.repeat(k)})${t.mealy ? ' · Mealy-Automat' : ''}` });
   c.cleanup();
   return { circuit: c, table: t, defs };
 }

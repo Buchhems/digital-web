@@ -89,7 +89,7 @@ function gate(type, name, sym, fn, invOut, ieee) {
   return {
     type, name, cat: 'Logikgatter',
     defaults: isNot ? { Bits: 1, Label: '' } : { Inputs: 2, Bits: 1, wideShape: false, Label: '', inverterConfig: [] },
-    props: isNot ? [P.bits, P.gateLabel] : [P.inputs, P.bits, P.wide, P.invert, P.gateLabel],
+    props: isNot ? [P.gateLabel, P.bits] : [P.gateLabel, P.inputs, P.bits, P.wide, P.invert],
     geo(a) {
       const n = isNot ? 1 : a.Inputs;
       const inv = new Set((a.inverterConfig || []).map(s => parseInt(String(s).replace('In_', '')) - 1).filter(i => i >= 0 && i < n));

@@ -210,3 +210,4 @@ body.sim.graph-open #graph { display: flex; }
 #graphCanvas { flex: 1; width: 100%; min-height: 0; display: block; touch-action: pan-y; }
 body.sim.graph-open #zoom { bottom: calc(36% + 14px); }
 body.sim .tb[hidden] { display: none !important; }
+#version { position: fixed; left: 8px; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); font-size: 10px; color: #9ca3af; pointer-events: none; z-index: 1; }

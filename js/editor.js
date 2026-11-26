@@ -450,7 +450,7 @@ export function drawPreview(canvas, type, attrs = {}) {
   const ctx = canvas.getContext('2d');
   const b = boundsWorld(c);
   const pad = 6;
-  const s = Math.min(1.1, (W - 2 * pad) / (b.x1 - b.x0 + 4), (H - 2 * pad) / (b.y1 - b.y0 + 4));
+  const s = Math.min(0.78, (W - 2 * pad) / (b.x1 - b.x0 + 4), (H - 2 * pad) / (b.y1 - b.y0 + 4));
   const ox = W / 2 - ((b.x0 + b.x1) / 2) * s, oy = H / 2 - ((b.y0 + b.y1) / 2) * s;
   ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * ox, dpr * oy);
   ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -480,7 +480,10 @@ function makeRenderer(ctx, c, texts) {
       ctx.restore();
     },
     circle(x, y, rad, f, noStroke) { ctx.beginPath(); ctx.arc(x, y, rad, 0, Math.PI * 2); fill(f, !noStroke); },
-    bubble(x, y) { ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); fill(COL.body); },
+    // Negationskreis am Ausgang: klein am Körper, Stummel bis zum Anschluss
+    invOut(bx, y, px) { ctx.beginPath(); ctx.arc(bx + 5, y, 5, 0, Math.PI * 2); fill(COL.body); ctx.beginPath(); ctx.moveTo(bx + 10, y); ctx.lineTo(px, y); ctx.stroke(); },
+    invIn(y) { ctx.beginPath(); ctx.moveTo(-S, y); ctx.lineTo(-10, y); ctx.stroke(); ctx.beginPath(); ctx.arc(-5, y, 5, 0, Math.PI * 2); fill(COL.body); },
+    rrect(x0, y0, x1, y1, rad, f, noStroke) { roundRect(ctx, x0, y0, x1 - x0, y1 - y0, Math.min(rad, (y1 - y0) / 2, (x1 - x0) / 2)); fill(f, !noStroke); },
     path(fn, closed = true) { ctx.beginPath(); fn(ctx); fill(closed ? COL.body : null); },
     text(x, y, str, hx, hy, size, kind) {
       if (str === '' || str == null) return;
@@ -494,7 +497,7 @@ function makeRenderer(ctx, c, texts) {
 
 const KIND = {
   label: ['600', '#1e3a8a'], symbol: ['700', COL.fg], name: ['400', '#6b7280'], value: ['700', COL.fg],
-  pinlabel: ['400', '#4b5563'], text: ['400', COL.fg], bus: ['700', COL.bus],
+  pinlabel: ['400', '#4b5563'], valueDark: ['700', '#064e1b'], valueLight: ['700', '#ffffff'], text: ['400', COL.fg], bus: ['700', COL.bus],
 };
 function drawText(ctx, t) {
   const [weight, color] = KIND[t.kind] || ['400', COL.fg];

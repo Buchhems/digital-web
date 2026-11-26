@@ -73,9 +73,9 @@ function drawGenericBox(r, g, a, { title, labels = true, clockPins = [] } = {}) 
         r.text(W - 4, p.y, p.n, -1, 0, 11);
       }
     }
-    if (p.inv) r.bubble(-10, p.y);
+    if (p.inv) r.invIn(p.y);
   }
-  if (g.invOut) for (const p of g.pins.filter(p => p.out)) r.bubble(W + 10, p.y);
+  if (g.invOut) for (const p of g.pins.filter(p => p.out)) r.invOut(W, p.y, p.x);
   if (title) r.text(W / 2, g.yb + 4, title, 0, 1, 11, 'name');
   if (a.Label) r.text(W / 2, -14, a.Label, 0, -1, 13, 'label');
 }
@@ -109,8 +109,8 @@ function gate(type, name, sym, fn, invOut, ieee) {
         r.rect(1, -10, S * g.width - 1, g.yb);
         r.text(S * g.width / 2, -7, sym, 0, 1, 15, 'symbol');
       }
-      for (const p of g.pins) if (p.inv) r.bubble(-10, p.y);
-      if (invOut) r.bubble(S * g.width + 10, g.offs);
+      for (const p of g.pins) if (p.inv) r.invIn(p.y);
+      if (invOut) r.invOut(S * g.width, g.offs, S * g.width + S);
       if (a.Label) r.text(S * g.width / 2, -14, a.Label, 0, -1, 13, 'label');
       if (a.Bits > 1) r.text(S * g.width / 2, g.yb + 3, a.Bits + ' Bit', 0, 1, 10, 'name');
     },
@@ -163,9 +163,13 @@ const In = {
     else return 'askValue';
   },
   draw(r, c, a, g, st) {
-    r.rect(-2 * OS - 1, -OS, -1, OS, true);
-    if (a.Bits === 1) r.circle(-1 - OS, 0, OS - 4, st ? r.valueColor(st.value, 1) : '#fff');
-    else r.text(-1 - OS, 0, st ? formatValue(st.value, a.Bits, a.intFormat) : a.Bits + 'b', 0, 0, st ? 12 : 10, 'value');
+    r.rrect(-2 * OS - 1, -OS + 2, -1, OS - 2, 5, '#e8f0fe');
+    if (a.Bits === 1) {
+      // Kippschalter: Schiene mit Knopf, rechts = 1
+      const on = st ? st.value === 1 : false;
+      r.rrect(-27, -6, -5, 6, 6, st ? (on ? '#34d058' : '#9ca3af') : '#cbd5e1', true);
+      r.circle(on ? -11 : -21, 0, 5.5, '#ffffff');
+    } else r.text(-1 - OS, 0, st ? formatValue(st.value, a.Bits, a.intFormat) : a.Bits + 'b', 0, 0, st ? 12 : 10, 'value');
     if (a.Label) r.text(-3 * OS, 0, a.Label, -1, 0, 14, 'label');
   },
 };
@@ -177,10 +181,16 @@ const Out = {
   geo(a) { return { pins: [{ n: 'in', bits: a.Bits, x: 0, y: 0, out: false }], box: { x0: 0, y0: -OS, x1: 2 * OS + 2, y1: OS } }; },
   eval() { return []; },
   draw(r, c, a, g, st) {
-    r.rect(1, -OS, 2 * OS + 1, OS, true);
     const v = st ? st.ins[0] : undefined;
-    if (a.Bits === 1) r.circle(1 + OS, 0, OS - 4, st ? r.valueColor(v, 1) : '#fff');
-    else r.text(1 + OS, 0, st ? formatValue(v, a.Bits, a.intFormat) : a.Bits + 'b', 0, 0, st ? 12 : 10, 'value');
+    if (a.Bits === 1) {
+      // Runde Anzeige; im Simulationsmodus mit Wert
+      r.line(0, 0, 2, 0);
+      r.circle(1 + OS, 0, OS, st ? r.valueColor(v, 1) : '#f3f4f6');
+      if (st) r.text(1 + OS, 0.5, v == null ? 'Z' : String(v), 0, 0, 14, v ? 'valueDark' : 'valueLight');
+    } else {
+      r.rrect(1, -OS, 2 * OS + 1, OS, OS, '#f3f4f6');
+      r.text(1 + OS, 0, st ? formatValue(v, a.Bits, a.intFormat) : a.Bits + 'b', 0, 0, st ? 12 : 10, 'value');
+    }
     if (a.Label) r.text(3 * OS, 0, a.Label, 1, 0, 14, 'label');
   },
 };

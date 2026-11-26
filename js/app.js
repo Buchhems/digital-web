@@ -381,7 +381,7 @@ function showTable() {
   const head = t.inputs.map(i => `<th>${i.name}</th>`).join('') + t.outputs.map((o, j) => `<th class="${j ? '' : 'sepcol'}">${o.name}</th>`).join('');
   const cell = (v, bits, cls = '') => `<td class="${cls} ${bits === 1 ? (v ? 'one' : 'zero') : ''}">${v == null ? 'Z' : formatValue(v, bits)}</td>`;
   const body = t.rows.map(r => '<tr>' + r.ins.map((v, i) => cell(v, t.inputs[i].bits)).join('') + r.outs.map((v, j) => cell(v, t.outputs[j].bits, j ? '' : 'sepcol')).join('') + '</tr>').join('');
-  const expr = t.expressions?.length ? '<h3>Minimierte Ausdrücke (DNF)</h3>' + t.expressions.map(e => `<div class="expr"><b>${e.name}</b> = ${e.dnf}</div>`).join('') : '';
+  const expr = t.expressions?.length ? '<h3>Disjunktive Minimalform (DMF)</h3>' + t.expressions.map(e => `<div class="expr"><b>${e.name}</b> = ${e.dnf}</div>`).join('') : '';
   openDialog(`<div class="dialog"><h2>Wahrheitstabelle <button class="close">✕</button></h2>
     ${t.sequential ? '<div class="note">Die Schaltung enthält Speicherglieder oder Takte. Die Tabelle zeigt nur das Verhalten ausgehend vom aktuellen Zustand.</div>' : ''}
     ${t.oscillating ? '<div class="note">Die Schaltung schwingt – die Werte sind nicht zuverlässig.</div>' : ''}
@@ -404,7 +404,7 @@ function showHelp() {
     <li><b>Ansicht:</b> mit einem Finger auf freier Fläche verschieben, mit zwei Fingern zoomen.</li>
     <li><b>Eigenschaften</b> (Beschriftung, Anzahl Eingänge, Bitbreite …) erscheinen rechts, sobald ein Bauteil ausgewählt ist.</li>
     <li><b>Simulation:</b> „Start“ tippen. Eingänge antippen zum Umschalten, Taster gedrückt halten. Grün hell = 1, grün dunkel = 0, blau = nicht verbunden, rot = Fehler.</li>
-    <li><b>Wahrheitstabelle:</b> „Tabelle“ erzeugt die Tabelle aller Eingangskombinationen samt minimierter Formel.</li>
+    <li><b>Wahrheitstabelle:</b> „Tabelle“ erzeugt die Tabelle aller Eingangskombinationen samt disjunktiver Minimalform (DMF).</li>
     <li><b>Speichern:</b> Die Schaltung wird automatisch im Browser gesichert. Über „Datei → Speichern“ entsteht eine .dig-Datei, die auch das Desktop-Programm <i>Digital</i> öffnet.</li>
   </ul>
   <p style="color:#6b7280;font-size:13px">Tipp: Über „Teilen → Zum Home-Bildschirm“ in Safari wird die App wie eine normale App gestartet und funktioniert auch offline.</p></div>`);

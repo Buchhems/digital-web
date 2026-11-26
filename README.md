@@ -10,7 +10,7 @@ liest und schreibt dessen `.dig`-Dateien.
 - **Schaltzeichen nach DIN EN 60617** (&, ≥1, =1, 1 mit Negationskreis). Die amerikanischen IEEE-Symbole lassen sich optional einschalten.
 - **Bauteile:** Ein-/Ausgänge (auch mehrbittig), LED, Taster, Takt, Konstante, Masse/Versorgung, Messwert, 7-Segment-Anzeigen, UND/ODER/NICHT/NAND/NOR/XOR/XNOR (2–16 Eingänge, Eingänge negierbar), Tunnel, Splitter, Multiplexer, Demultiplexer, Decoder, RS-, JK-, D- und T-Flipflop, Addierer, Komparator, Zähler, Register, Text
 - **Simulation** mit Farbcodierung der Leitungen (hellgrün = 1, dunkelgrün = 0, blau = offen, rot = Fehler). Sie erkennt Kurzschlüsse, falsche Bitbreiten und schwingende Schaltungen.
-- **Wahrheitstabelle** per Knopfdruck, inklusive minimierter disjunktiver Normalform (Quine-McCluskey)
+- **Wahrheitstabelle** per Knopfdruck, inklusive disjunktiver Minimalform (DMF, Quine-McCluskey)
 - **Dateien:** Automatische Sicherung im Browser. Export als `.dig` (zum Teilen oder für das Desktop-Programm Digital) oder als PNG. Import von `.dig`-Dateien.
 - **Offline-fähig (PWA):** In Safari über *Teilen → Zum Home-Bildschirm* wie eine App installierbar
 

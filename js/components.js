@@ -528,7 +528,7 @@ export function subInterface(circuit) {
 const Sub = {
   type: 'Sub', name: 'Baustein', cat: null,
   defaults: { Label: '', Width: 3 },
-  props: [P.label, { key: 'Width', label: 'Breite', type: 'int', min: 2, max: 10 }],
+  props: [{ ...P.label, hint: 'Mit Beschriftung erscheinen die Ausgänge des Bausteins in der Wertetabelle als Zwischenschritte (z. B. HA1.S).' }, { key: 'Width', label: 'Breite', type: 'int', min: 2, max: 10 }],
   geo(a, c) {
     const sub = library.get(c?.sub);
     if (!sub) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };

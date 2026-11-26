@@ -7,7 +7,13 @@ const KW = { und: 'and', and: 'and', oder: 'or', or: 'or', xor: 'xor', nicht: 'n
 
 // ---------- Parser ----------
 // Erlaubt: ¬ ! ~ / (nicht), ∧ & * · (und), ∨ | + (oder), ⊕ ^ (xor), A' (nicht), Klammern, 0/1
+export const OV = '\u0305'; // kombinierender Überstrich
+// Überstrichene Abschnitte (jedes Zeichen mit U+0305) in ¬( … ) umwandeln
+export function expandOverline(src) {
+  return src.normalize('NFD').replace(/(?:[^\u0305]\u0305)+/g, run => '¬(' + run.replace(/\u0305/g, '') + ')');
+}
 export function parseExpr(src) {
+  src = expandOverline(src);
   const toks = [];
   const re = /\s*(?:([¬!~\/])|(∧|&&|&|\*|·|⋅)|(∨|\|\||\||\+)|(⊕|\^)|(\()|(\))|([A-Za-zÄÖÜäöüß_][A-Za-z0-9ÄÖÜäöüß_]*)|([01])(?![0-9])|(')|(\S))/gy;
   let m;
@@ -89,12 +95,13 @@ export function toHTML(e, parentPrec = 0) {
     }
   }
 }
-// Textform zum Kopieren (¬ statt Überstrich)
+// Textform zum Kopieren: Negation als Überstrich (kombinierendes Zeichen U+0305)
+const over = t => [...t].map(ch => ch + OV).join('');
 export function toText(e, parentPrec = 0) {
   switch (e.op) {
     case 'var': return e.name;
     case 'const': return String(e.v);
-    case 'not': return '¬' + (e.a.op === 'var' || e.a.op === 'const' || e.a.op === 'not' ? toText(e.a) : '(' + toText(e.a) + ')');
+    case 'not': return over(toText(e.a, 0));
     default: {
       const s = e.args.map(a => toText(a, PREC[e.op])).join(SYM[e.op]);
       return PREC[e.op] < parentPrec ? `(${s})` : s;

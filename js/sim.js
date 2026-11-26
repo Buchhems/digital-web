@@ -5,7 +5,8 @@ import { buildNets } from './circuit.js';
 export class Sim {
   constructor(circuit) {
     this.circuit = circuit;
-    const { nets, compPins, wireNet, comps, problems } = buildNets(circuit);
+    const { nets, compPins, wireNet, comps, problems, subPins } = buildNets(circuit);
+    this.subPins = subPins;
     this.nets = nets; this.wireNet = wireNet;
     this.state = new Map();
     this.errors = [...new Set(problems)];
@@ -90,6 +91,9 @@ export class Sim {
   }
 
   update(c) { return this.run([c]); }
+
+  // Wert am k-ten Ausgang eines Bausteins (oberste Ebene)
+  subOut(c, k) { const outs = (this.subPins.get(c.id) || []).filter(x => x.p.out); return outs[k] ? this.nets[outs[k].net].value : null; }
 
   netOfWire(w) { return this.nets[this.wireNet.get(w.id)]; }
   st(c) { return this.state.get(c.id); }

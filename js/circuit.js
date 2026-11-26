@@ -174,15 +174,21 @@ export function buildNets(circuit) {
   }
   const wireNet = new Map();
   for (const w of topWires) { const n = getNet('w' + w.id); wireNet.set(w.id, n); nets[n].wires.push(w); }
-  // Bitbreiten an Baustein-Anschlüssen auf oberster Ebene mitprüfen
-  for (const c of circuit.comps) if (c.type === 'Sub') for (const p of pinsWorld(c)) {
-    const n = getNet('p' + p.x + ',' + p.y); if (p.bits) { nets[n].bitSet.add(p.bits); nets[n].bits = Math.max(nets[n].bits, p.bits); }
+  // Anschlüsse der Bausteine auf oberster Ebene: Netz je Anschluss merken (für Zwischenschritte) und Bitbreiten prüfen
+  const subPins = new Map();
+  for (const c of circuit.comps) if (c.type === 'Sub') {
+    const list = [];
+    for (const p of pinsWorld(c)) {
+      const n = getNet('p' + p.x + ',' + p.y); list.push({ p, net: n });
+      if (p.bits) { nets[n].bitSet.add(p.bits); nets[n].bits = Math.max(nets[n].bits, p.bits); }
+    }
+    subPins.set(c.id, list);
   }
   for (const net of nets) {
     if (!net.bits) net.bits = 1;
     if (net.bitSet.size > 1) net.error = 'bits';
   }
-  return { nets, compPins, wireNet, comps: flat.map(f => f.c), problems };
+  return { nets, compPins, wireNet, comps: flat.map(f => f.c), problems, subPins };
 }
 
 // Verbindungspunkte (für die Punkte an Abzweigungen)

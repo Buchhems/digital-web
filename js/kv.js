@@ -10,7 +10,7 @@ export function kvSVG(expr) {
   const nc = Math.ceil(n / 2), nr = n - nc;            // Spalten- und Zeilenvariablen
   const colVars = expr.vars.slice(0, nc), rowVars = expr.vars.slice(nc);
   const cols = GRAY[nc], rows = GRAY[nr];
-  const ones = new Set(expr.ones);
+  const ones = new Set(expr.ones), dcs = new Set(expr.dcs || []);
   const C = 52, L = 64, T = 58;                         // Zellgröße, Ränder
   const W = L + cols.length * C + 12, H = T + rows.length * C + 12;
   const bin = (v, k) => v.toString(2).padStart(k, '0');
@@ -24,9 +24,9 @@ export function kvSVG(expr) {
   rows.forEach((g, r) => { s += `<text x="${L - 10}" y="${T + r * C + C / 2 + 5}" text-anchor="end" font-size="14" font-weight="600">${bin(g, nr)}</text>`; });
   // Zellen
   rows.forEach((_, r) => cols.forEach((_, c) => {
-    const m = minterm(r, c), v = ones.has(m);
+    const m = minterm(r, c), v = ones.has(m), x = dcs.has(m);
     s += `<rect x="${L + c * C}" y="${T + r * C}" width="${C}" height="${C}" fill="#fff" stroke="#9ca3af"/>`;
-    s += `<text x="${L + c * C + C / 2}" y="${T + r * C + C / 2 + 7}" text-anchor="middle" font-size="20" font-weight="${v ? 700 : 400}" fill="${v ? '#15803d' : '#9ca3af'}">${v ? 1 : 0}</text>`;
+    s += `<text x="${L + c * C + C / 2}" y="${T + r * C + C / 2 + 7}" text-anchor="middle" font-size="20" font-weight="${v || x ? 700 : 400}" fill="${v ? '#15803d' : x ? '#7c3aed' : '#9ca3af'}">${v ? 1 : x ? 'X' : 0}</text>`;
     s += `<text x="${L + c * C + 4}" y="${T + r * C + 12}" font-size="9" fill="#b0b4bb">${m}</text>`;
   }));
   // Primimplikanten als Blöcke (bei Umbruch über den Rand in Teilen)

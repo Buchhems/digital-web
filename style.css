@@ -211,3 +211,47 @@ body.sim.graph-open #graph { display: flex; }
 body.sim.graph-open #zoom { bottom: calc(36% + 14px); }
 body.sim .tb[hidden] { display: none !important; }
 #version { position: fixed; left: 8px; bottom: calc(4px + env(safe-area-inset-bottom, 0px)); font-size: 10px; color: #9ca3af; pointer-events: none; z-index: 1; }
+textarea.formula { font: 22px/1.6 -apple-system, "Segoe UI", sans-serif !important; letter-spacing: .5px; }
+.ov-key { font-weight: 600; }
+.ov-key .ov { text-decoration-thickness: 2px; }
+
+/* Übung / Tabellen-Editor */
+.tt-switches { display: flex; gap: 22px; flex-wrap: wrap; }
+.cellbtn { width: 44px; height: 36px; border-radius: 8px; border: 1.5px dashed #c7cbd3; background: #fff; font: 700 16px -apple-system, sans-serif; cursor: pointer; }
+.cellbtn.right { border: 2px solid var(--green); background: #f0fdf4; color: var(--green); }
+.cellbtn.wrong { border: 2px solid var(--red); background: #fef2f2; color: var(--red); }
+.cellbtn.val { border-style: solid; color: #9ca3af; }
+.cellbtn.val.one { color: var(--green); border-color: #86efac; background: #f0fdf4; }
+.cellbtn.val.x { color: #7c3aed; border-color: #c4b5fd; background: #f5f3ff; }
+table.tt.fill td, table.tt.edit td { padding: 3px 8px; }
+.score { font-weight: 700; font-size: 16px; color: var(--accent); }
+.tt-setup { display: grid; grid-template-columns: 180px 1fr 1fr; gap: 14px; }
+@media (max-width: 700px) { .tt-setup { grid-template-columns: 1fr; } }
+table.tt th.exc, table.tt td.exc { background: #fff7ed; }
+.legend.exc { display: inline-block; width: 12px; height: 12px; background: #fff7ed; border: 1px solid #fed7aa; vertical-align: -1px; border-radius: 3px; }
+.diagram { overflow-x: auto; }
+.state-svg { max-width: 100%; height: auto; }
+.edge-label { font: 600 13px -apple-system, sans-serif; text-align: center; color: #111827; }
+.edge-label > * , .edge-label { white-space: nowrap; }
+.edge-label { display: flex; justify-content: center; }
+.edge-label > span, .edge-label > i { background: rgba(255,255,255,.92); padding: 0 3px; border-radius: 4px; }
+.edge-label.sel { color: #2563eb; }
+.edge-label .ov { text-decoration: overline; }
+.always { color: #6b7280; font-style: italic; }
+.bad { color: var(--red); }
+.ok-note { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; padding: 8px 12px; border-radius: 10px; font-size: 13.5px; margin-bottom: 12px; }
+/* Automaten-Editor */
+#fsm { position: fixed; inset: 0; background: var(--bg); z-index: 35; display: none; flex-direction: column; }
+#fsm.open { display: flex; }
+.fsm-bar { display: flex; align-items: center; gap: 6px; padding: calc(env(safe-area-inset-top, 0px) + 8px) 10px 8px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.fsm-bar label { font-size: 13px; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.fsm-bar input { width: 90px; height: 40px; border: 1px solid #d4d6dc; border-radius: 9px; padding: 0 8px; font-size: 16px; }
+.fsm-title { font-size: 15px; margin-right: 6px; }
+.btn.toggle.on { background: var(--accent-soft); color: var(--accent); border-color: #c7d6fb; }
+.fsm-main { flex: 1; display: flex; min-height: 0; }
+#fsmSvg { flex: 1; touch-action: none; background-image: radial-gradient(#d6d8dc 1px, transparent 1px); background-size: 20px 20px; }
+#fsmSide { width: 290px; background: var(--panel); border-left: 1px solid var(--line); padding: 14px; overflow-y: auto; }
+#fsmSide h2 { font-size: 16px; margin: 0 0 4px; }
+.formula-in { font-size: 20px !important; }
+.help-list { padding-left: 18px; font-size: 13.5px; color: #374151; line-height: 1.45; }
+@media (max-width: 900px) { #fsmSide { width: 240px; } .fsm-bar input { width: 80px; } }

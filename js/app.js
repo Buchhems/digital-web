@@ -3,9 +3,11 @@ import { Circuit } from './circuit.js';
 import { Sim } from './sim.js';
 import { Editor, drawPreview } from './editor.js';
 import { parseDig, writeDig, subName } from './dig.js';
-import { truthTable } from './analysis.js';
+import { truthTable, columnExpr } from './analysis.js';
+import { stateAnalysis, stateDiagramSVG } from './seq.js';
+import { FsmEditor } from './fsmeditor.js';
 import { kvSVG, KV_COLORS } from './kv.js';
-import { parseEquations, buildCircuit, toHTML, toText, termsToAST } from './synth.js';
+import { parseEquations, buildCircuit, toHTML, toText, termsToAST, OV } from './synth.js';
 import { Recorder } from './graph.js';
 import { runTest } from './testcase.js';
 import { writeZip, readZip } from './zip.js';
@@ -15,6 +17,7 @@ import { EXAMPLES } from './examples.js';
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const STORE = 'digitalweb.v1';
+const VERSION = 'Version 6 · 26.11.2026';
 
 // ---------- Zustand ----------
 // Ein Projekt besteht aus mehreren Schaltungen (library). Jede kann in den anderen als Baustein dienen.
@@ -485,6 +488,8 @@ function showMenu() {
       <button class="menu-item" data-a="open"><span class="ico">📂</span><span><b>Öffnen …</b><small>.dig- oder .zip-Dateien (auch mehrere)</small></span></button>
       <button class="menu-item" data-a="save"><span class="ico">💾</span><span><b>Speichern …</b><small>Als .dig sichern oder teilen</small></span></button>
       <button class="menu-item" data-a="formula"><span class="ico">ƒ</span><span><b>Schaltung aus Formel</b><small>Booleschen Ausdruck eingeben</small></span></button>
+      <button class="menu-item" data-a="ttedit"><span class="ico">▦</span><span><b>Wahrheitstabelle eingeben</b><small>Mit X (don't care) → DMF, KV, Schaltung</small></span></button>
+      <button class="menu-item" data-a="fsm"><span class="ico">⟳</span><span><b>Automaten-Editor</b><small>Zustandsdiagramm → Schaltwerk</small></span></button>
       <button class="menu-item" data-a="png"><span class="ico">🖼</span><span><b>Als Bild</b><small>PNG der aktuellen Ansicht</small></span></button>
       <button class="menu-item" data-a="newproj"><span class="ico">🗑</span><span><b>Neues Projekt</b><small>Alle Schaltungen schließen</small></span></button>
     </div>
@@ -493,6 +498,7 @@ function showMenu() {
     <div class="row"><span style="font-size:15px">Schaltzeichen:</span>
       <div class="chips"><button class="chip ${settings.shapes !== 'ieee' ? 'on' : ''}" data-shape="iec">DIN / IEC (&amp;, ≥1)</button><button class="chip ${settings.shapes === 'ieee' ? 'on' : ''}" data-shape="ieee">IEEE (amerikanisch)</button></div></div>
     <h3>Hilfe</h3><div class="menu-list"><button class="menu-item" data-a="help"><span class="ico">？</span><span><b>Bedienung</b><small>So funktioniert's auf dem iPad</small></span></button></div>
+    <p class="muted" style="margin-top:16px">Digital Web · ${VERSION}</p>
   </div>`);
   $('#sheet').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
@@ -504,6 +510,8 @@ function showMenu() {
       case 'open': closeDialog(); $('#fileInput').click(); break;
       case 'save': showSave(); break;
       case 'formula': showFormula(); break;
+      case 'ttedit': showTTEditor(); break;
+      case 'fsm': closeDialog(); openFsm(); break;
       case 'png': exportPng(); closeDialog(); break;
       case 'newproj': confirmDialog('Alle Schaltungen dieses Projekts schließen? Nicht gespeicherte Arbeit geht verloren.', 'Neues Projekt', () => {
         library.clear(); library.set('Schaltung', new Circuit()); touchLibrary(); setCurrent('Schaltung');
@@ -604,10 +612,14 @@ $('#fileInput').addEventListener('change', async e => {
 // ---------- Wahrheitstabelle, KV, Synthese ----------
 const GATE_TYPES = ['And', 'Or', 'Not', 'NAnd', 'NOr', 'XOr', 'XNOr'];
 let tableAllGates = false;
+let tableFill = false;              // Übungsmodus: Ausgänge selbst ausfüllen
+let fillAnswers = new Map();
 const exprHTML = e => toHTML(termsToAST(e.terms, e.vars.length, e.vars));
 const exprText = e => toText(termsToAST(e.terms, e.vars.length, e.vars));
 
 function showTable() {
+  if (circuit.comps.some(c => ['D_FF', 'JK_FF', 'T_FF', 'RS_FF'].includes(c.type)) && !showTable.combinational) return showStateAnalysis();
+  showTable.combinational = false;
   let t;
   try { t = truthTable(circuit, { allGates: tableAllGates }); } catch (e) { toast(e.message, true); return; }
   const cols = [
@@ -616,46 +628,173 @@ function showTable() {
     ...t.outputs.map((c, j) => ({ ...c, kind: 'out', first: j === 0 })),
   ];
   const head = cols.map(c => `<th class="${c.kind} ${c.first ? 'sepcol' : ''}">${esc(c.name)}${c.auto ? '<sup>*</sup>' : ''}</th>`).join('');
-  const cell = (v, c) => `<td class="${c.kind} ${c.first ? 'sepcol' : ''} ${c.bits === 1 ? (v ? 'one' : 'zero') : ''}">${v == null ? 'Z' : formatValue(v, c.bits)}</td>`;
-  const body = t.rows.map(r => '<tr>' + [...r.ins, ...r.steps, ...r.outs].map((v, i) => cell(v, cols[i])).join('') + '</tr>').join('');
+  const cell = (v, c, r, i) => {
+    if (tableFill && c.kind !== 'in') {
+      const key = r + ':' + i, a = fillAnswers.get(key);
+      return `<td class="${c.kind} ${c.first ? 'sepcol' : ''}"><button class="cellbtn" data-cell="${key}" data-bits="${c.bits}">${a ?? ''}</button></td>`;
+    }
+    return `<td class="${c.kind} ${c.first ? 'sepcol' : ''} ${c.bits === 1 ? (v ? 'one' : 'zero') : ''}">${v == null ? 'Z' : formatValue(v, c.bits)}</td>`;
+  };
+  const all = r => [...r.ins, ...r.steps, ...r.outs];
+  const body = t.rows.map((r, ri) => '<tr>' + all(r).map((v, i) => cell(v, cols[i], ri, i)).join('') + '</tr>').join('');
   const exprList = list => list.map(e => `<div class="expr"><b>${esc(e.name)}</b> = ${exprHTML(e)}</div>`).join('');
-  const expr = t.expressions?.length ? '<h3>Disjunktive Minimalform (DMF)</h3>' + exprList(t.expressions)
+  const expr = !tableFill && t.expressions?.length ? '<h3>Disjunktive Minimalform (DMF)</h3>' + exprList(t.expressions)
     + (t.stepExpressions?.length ? '<details class="steps-dmf"><summary>DMF der Zwischenschritte</summary>' + exprList(t.stepExpressions) + '</details>' : '') : '';
-  const hasGates = circuit.comps.some(c => GATE_TYPES.includes(c.type));
-  const kvOk = t.expressions?.some(e => e.vars.length >= 2 && e.vars.length <= 4);
+  const hasGates = circuit.comps.some(c => GATE_TYPES.includes(c.type) || c.type === 'Sub');
+  const kvOk = !tableFill && t.expressions?.some(e => e.vars.length >= 2 && e.vars.length <= 4);
   openDialog(`<div class="dialog"><h2>Wahrheitstabelle <button class="close">✕</button></h2>
     ${t.sequential ? '<div class="note">Die Schaltung enthält Speicherglieder oder Takte. Die Tabelle zeigt nur das Verhalten ausgehend vom aktuellen Zustand.</div>' : ''}
     ${t.oscillating ? '<div class="note">Die Schaltung schwingt – die Werte sind nicht zuverlässig.</div>' : ''}
-    ${hasGates ? `<label class="switch tt-switch"><span>Alle Gatter als Zwischenschritte zeigen</span><input type="checkbox" id="ttAll" ${tableAllGates ? 'checked' : ''}></label>` : ''}
-    <div class="tt-wrap"><table class="tt"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
-    <p class="tt-hint">${t.steps.length ? '<span class="legend step"></span> Zwischenschritte' + (t.steps.some(s => s.auto) ? ' (* = automatisch benannt, von links nach rechts)' : '') + ' · ' : ''}Tipp: Gib einem Gatter eine <b>Beschriftung</b> (z. B. Z1), dann erscheint es hier als Zwischenschritt.</p>
+    <div class="tt-switches">
+    ${hasGates ? `<label class="switch tt-switch"><span>Alle Gatter und Bausteine als Zwischenschritte</span><input type="checkbox" id="ttAll" ${tableAllGates ? 'checked' : ''}></label>` : ''}
+    <label class="switch tt-switch"><span>Übung: selbst ausfüllen</span><input type="checkbox" id="ttFill" ${tableFill ? 'checked' : ''}></label></div>
+    ${tableFill ? '<p class="muted">Tippe in die leeren Felder (0 ↔ 1) und dann auf „Prüfen“.</p>' : ''}
+    <div class="tt-wrap"><table class="tt ${tableFill ? 'fill' : ''}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <p class="tt-hint">${t.steps.length ? '<span class="legend step"></span> Zwischenschritte' + (t.steps.some(s => s.auto) ? ' (* = automatisch benannt, von links nach rechts)' : '') + ' · ' : ''}Tipp: Gib einem Gatter oder Baustein eine <b>Beschriftung</b> (z. B. Z1 oder HA1), dann erscheint es hier als Zwischenschritt.</p>
     ${expr}
-    <div class="row" style="margin-top:14px"><button class="btn" id="copyCsv">Als Tabelle kopieren</button>${kvOk ? '<button class="btn" id="showKV">KV-Diagramm</button>' : ''}${t.expressions?.length ? '<button class="btn" id="buildDMF">Schaltung aus DMF erzeugen</button>' : ''}</div></div>`, true);
-  const all = $('#ttAll');
-  if (all) all.onchange = () => { tableAllGates = all.checked; showTable(); };
+    <div class="row" style="margin-top:14px">${tableFill ? '<button class="btn primary" id="ttCheck">Prüfen</button><button class="btn" id="ttReset">Leeren</button><span id="ttScore" class="score"></span>' : `<button class="btn" id="copyCsv">Als Tabelle kopieren</button>${kvOk ? '<button class="btn" id="showKV">KV-Diagramm</button>' : ''}${t.expressions?.length ? '<button class="btn" id="buildDMF">Schaltung aus DMF erzeugen</button>' : ''}`}</div></div>`, true);
+  const allSw = $('#ttAll');
+  if (allSw) allSw.onchange = () => { tableAllGates = allSw.checked; fillAnswers.clear(); showTable(); };
+  $('#ttFill').onchange = e => { tableFill = e.target.checked; fillAnswers.clear(); showTable(); };
+  if (tableFill) {
+    $('#sheet').querySelector('table').onclick = e => {
+      const b = e.target.closest('.cellbtn'); if (!b) return;
+      const cur = fillAnswers.get(b.dataset.cell);
+      const bits = +b.dataset.bits;
+      let v;
+      if (bits === 1) v = cur === undefined ? '0' : cur === '0' ? '1' : undefined;
+      else { const n = prompt('Wert eingeben:', cur ?? ''); v = n === null || n === '' ? undefined : n.trim(); }
+      if (v === undefined) fillAnswers.delete(b.dataset.cell); else fillAnswers.set(b.dataset.cell, v);
+      b.textContent = v ?? ''; b.classList.remove('right', 'wrong');
+    };
+    $('#ttCheck').onclick = () => {
+      let right = 0, total = 0;
+      $('#sheet').querySelectorAll('.cellbtn').forEach(b => {
+        const [ri, ci] = b.dataset.cell.split(':').map(Number);
+        const v = all(t.rows[ri])[ci], c = cols[ci];
+        const exp = v == null ? 'Z' : formatValue(v, c.bits);
+        const a = fillAnswers.get(b.dataset.cell);
+        const ok = a !== undefined && (a === exp || parseNum(a) === v);
+        total++; if (ok) right++;
+        b.classList.toggle('right', ok); b.classList.toggle('wrong', !ok);
+      });
+      $('#ttScore').textContent = `${right} von ${total} richtig` + (right === total ? ' 🎉' : '');
+    };
+    $('#ttReset').onclick = () => { fillAnswers.clear(); showTable(); };
+    return;
+  }
   $('#copyCsv').onclick = async () => {
-    const lines = [cols.map(x => x.name).join('\t'), ...t.rows.map(r => [...r.ins, ...r.steps, ...r.outs].map(v => v ?? 'Z').join('\t'))];
+    const lines = [cols.map(x => x.name).join('\t'), ...t.rows.map(r => all(r).map(v => v ?? 'Z').join('\t'))];
     if (t.expressions) lines.push('', ...t.expressions.map(e => e.name + ' = ' + exprText(e)));
     try { await navigator.clipboard.writeText(lines.join('\n')); toast('Kopiert – kann in Numbers/Excel eingefügt werden.'); } catch { toast('Kopieren nicht möglich', true); }
   };
-  const kv = $('#showKV'); if (kv) kv.onclick = () => showKV(t);
+  const kv = $('#showKV'); if (kv) kv.onclick = () => showKV([...t.expressions, ...(t.stepExpressions || [])], showTable);
   const bd = $('#buildDMF'); if (bd) bd.onclick = () => buildFromDMF(t);
 }
 
-function showKV(t) {
-  const blocks = [...t.expressions, ...(t.stepExpressions || [])].filter(e => e.vars.length >= 2 && e.vars.length <= 4).map(e => {
+function showKV(exprs, back) {
+  const blocks = exprs.filter(e => e.vars.length >= 2 && e.vars.length <= 4).map(e => {
     const terms = termsToAST(e.terms, e.vars.length, e.vars);
     const prods = terms.op === 'or' ? terms.args : [terms];
-    const chips = e.terms.length && e.ones.length < 2 ** e.vars.length
+    const chips = e.terms.length && e.terms[0].m !== 2 ** e.vars.length - 1
       ? prods.map((p, k) => `<span class="term" style="border-color:${KV_COLORS[k % KV_COLORS.length]};color:${KV_COLORS[k % KV_COLORS.length]}">${toHTML(p, 2)}</span>`).join('<span class="or"> ∨ </span>')
       : toHTML(terms);
     return `<div class="kv-block"><h4>${esc(e.name)}</h4>${kvSVG(e)}<div class="expr">${esc(e.name)} = ${chips}</div></div>`;
   }).join('');
   openDialog(`<div class="dialog"><h2>KV-Diagramme <button class="close">✕</button></h2>
-    <p class="muted">Die farbigen Blöcke sind die Primimplikanten der disjunktiven Minimalform. Kleine Zahlen = Zeilennummer in der Wahrheitstabelle.</p>
-    <div class="kv-grid">${blocks}</div>
-    <div class="row" style="margin-top:12px"><button class="btn" id="kvBack">← Zur Tabelle</button></div></div>`, true);
-  $('#kvBack').onclick = showTable;
+    <p class="muted">Die farbigen Blöcke sind die Primimplikanten der disjunktiven Minimalform. X = beliebig (don't care). Kleine Zahlen = Zeilennummer in der Wahrheitstabelle.</p>
+    <div class="kv-grid">${blocks || '<p class="muted">KV-Diagramme gibt es für 2 bis 4 Eingänge.</p>'}</div>
+    <div class="row" style="margin-top:12px"><button class="btn" id="kvBack">← Zurück</button></div></div>`, true);
+  $('#kvBack').onclick = back;
+}
+
+// ---------- Wahrheitstabelle selbst eingeben ----------
+const tt = { n: 3, ins: 'A B C', outs: 'Y', vals: {} };
+const LETTERS = 'ABCDEF';
+function ttNames(str, n, fallback) {
+  const a = String(str).split(/[\s,;]+/).filter(x => /^[A-Za-zÄÖÜäöüß_][A-Za-z0-9ÄÖÜäöüß_]*$/.test(x));
+  return Array.from({ length: n }, (_, i) => a[i] || fallback(i));
+}
+function showTTEditor() {
+  const n = tt.n, ins = ttNames(tt.ins, n, i => LETTERS[i]);
+  const outs = ttNames(tt.outs, Math.max(1, Math.min(4, String(tt.outs).split(/[\s,;]+/).filter(Boolean).length || 1)), i => 'Y' + (i ? i + 1 : ''));
+  for (const o of outs) { if (!tt.vals[o] || tt.vals[o].length !== 2 ** n) tt.vals[o] = Array(2 ** n).fill(0); }
+  const exprs = outs.map(o => columnExpr(o, ins, tt.vals[o]));
+  const head = ins.map(x => `<th>${esc(x)}</th>`).join('') + outs.map((o, j) => `<th class="${j ? '' : 'sepcol'}">${esc(o)}</th>`).join('');
+  const body = Array.from({ length: 2 ** n }, (_, r) => '<tr>' + ins.map((_, i) => `<td>${(r >> (n - 1 - i)) & 1}</td>`).join('')
+    + outs.map((o, j) => { const v = tt.vals[o][r]; return `<td class="${j ? '' : 'sepcol'}"><button class="cellbtn val ${v === 'X' ? 'x' : v ? 'one' : ''}" data-o="${esc(o)}" data-r="${r}">${v}</button></td>`; }).join('') + '</tr>').join('');
+  openDialog(`<div class="dialog"><h2>Wahrheitstabelle eingeben <button class="close">✕</button></h2>
+    <div class="tt-setup">
+      <div class="field"><label>Anzahl Eingänge</label><div class="stepper"><button data-n="-1">−</button><input type="text" value="${n}" readonly><button data-n="1">+</button></div></div>
+      <div class="field"><label>Namen der Eingänge</label><input type="text" id="ttIns" value="${esc(ins.join(' '))}" autocapitalize="characters" autocomplete="off" spellcheck="false"></div>
+      <div class="field"><label>Namen der Ausgänge (bis 4)</label><input type="text" id="ttOuts" value="${esc(outs.join(' '))}" autocapitalize="characters" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <p class="muted">Ausgangswerte antippen: 0 → 1 → X (beliebig / don't care) → 0.</p>
+    <div class="tt-wrap"><table class="tt edit"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <h3>Disjunktive Minimalform (DMF)</h3><div id="ttExpr">${exprs.map(e => `<div class="expr"><b>${esc(e.name)}</b> = ${exprHTML(e)}</div>`).join('')}</div>
+    <div class="row" style="margin-top:14px">${n >= 2 && n <= 4 ? '<button class="btn" id="ttKV">KV-Diagramm</button>' : ''}<button class="btn primary" id="ttBuild">Schaltung erzeugen</button><button class="btn" id="ttClear">Alle auf 0</button></div></div>`, true);
+  const sh = $('#sheet');
+  sh.querySelectorAll('[data-n]').forEach(b => (b.onclick = () => { tt.n = Math.max(1, Math.min(6, tt.n + +b.dataset.n)); tt.ins = ttNames(tt.ins, tt.n, i => LETTERS[i]).join(' '); showTTEditor(); }));
+  $('#ttIns').onchange = e => { tt.ins = e.target.value; showTTEditor(); };
+  $('#ttOuts').onchange = e => { tt.outs = e.target.value; showTTEditor(); };
+  sh.querySelector('table').onclick = e => {
+    const b = e.target.closest('.cellbtn'); if (!b) return;
+    const arr = tt.vals[b.dataset.o], r = +b.dataset.r;
+    arr[r] = arr[r] === 0 ? 1 : arr[r] === 1 ? 'X' : 0;
+    b.textContent = arr[r]; b.className = 'cellbtn val ' + (arr[r] === 'X' ? 'x' : arr[r] ? 'one' : '');
+    $('#ttExpr').innerHTML = outs.map(o => columnExpr(o, ins, tt.vals[o])).map(e => `<div class="expr"><b>${esc(e.name)}</b> = ${exprHTML(e)}</div>`).join('');
+  };
+  const kv = $('#ttKV'); if (kv) kv.onclick = () => showKV(outs.map(o => columnExpr(o, ins, tt.vals[o])), showTTEditor);
+  $('#ttClear').onclick = () => { for (const o of outs) tt.vals[o] = Array(2 ** n).fill(0); showTTEditor(); };
+  $('#ttBuild').onclick = () => {
+    const defs = outs.map(o => { const e = columnExpr(o, ins, tt.vals[o]); return { name: o, ast: termsToAST(e.terms, n, ins) }; });
+    closeDialog();
+    const name = addDoc(outs.join(', ') + ' (Tabelle)', buildCircuit(defs));
+    toast(`Schaltung „${name}“ aus der Tabelle erzeugt.`);
+  };
+}
+
+// ---------- Schaltwerk-Analyse ----------
+function showStateAnalysis() {
+  let a;
+  try { a = stateAnalysis(circuit); } catch (e) { toast(e.message, true, 4000); return; }
+  const k = a.states.length, code = v => v.toString(2).padStart(k, '0');
+  const head = a.states.map(q => `<th class="step">${esc(q)}</th>`).join('') + a.inputs.map(x => `<th>${esc(x)}</th>`).join('')
+    + a.states.map((q, i) => `<th class="step ${i ? '' : 'sepcol'}">${esc(q)}⁺</th>`).join('')
+    + a.ffInputs.map((x, i) => `<th class="exc ${i ? '' : 'sepcol'}">${esc(x)}</th>`).join('')
+    + a.outputs.map((o, i) => `<th class="${i ? '' : 'sepcol'}">${esc(o)}</th>`).join('');
+  const td = (v, cls = '') => `<td class="${cls} ${v ? 'one' : 'zero'}">${v}</td>`;
+  const body = a.rows.map(r => '<tr>' + r.stateBits.map(b => td(b, 'step')).join('') + r.inBits.map(b => td(b)).join('')
+    + r.nextBits.map((b, i) => td(b, 'step ' + (i ? '' : 'sepcol'))).join('') + r.exc.map((b, i) => td(b, 'exc ' + (i ? '' : 'sepcol'))).join('')
+    + r.outs.map((b, i) => td(b, i ? '' : 'sepcol')).join('') + '</tr>').join('');
+  // Zustandsdiagramm
+  const nodes = Array.from({ length: 2 ** k }, (_, st) => {
+    const r = a.rows.find(x => x.state === st);
+    return { id: st, label: code(st), sub: a.moore && a.outputs.length ? a.outputs.map((o, j) => r.outs[j]).join('') : '', initial: st === 0 };
+  });
+  const edges = a.rows.map(r => ({ from: r.state, to: r.next, label: (a.inputs.length ? r.inBits.join('') : '') + (!a.moore && a.outputs.length ? '/' + r.outs.join('') : '') }));
+  const legend = `Zustand: ${a.states.map(esc).join('')}${a.moore && a.outputs.length ? ' · im Kreis unten: ' + a.outputs.map(esc).join('') : ''}${a.inputs.length ? ' · Pfeile: ' + a.inputs.map(esc).join('') + (!a.moore && a.outputs.length ? ' / ' + a.outputs.map(esc).join('') : '') : ''}`;
+  const eq = list => list.map(e => `<div class="expr"><b>${esc(e.name)}</b> = ${exprHTML(e)}</div>`).join('');
+  openDialog(`<div class="dialog"><h2>Schaltwerk-Analyse <button class="close">✕</button></h2>
+    <p class="muted">${a.moore ? 'Moore-Automat' : a.outputs.length ? 'Mealy-Automat' : 'Automat'} mit ${k} Flipflop${k > 1 ? 's' : ''} (${2 ** k} Zustände). Spalten: Zustand · Eingänge · Folgezustand (⁺) · <span class="legend exc"></span> Ansteuerung der Flipflops · Ausgänge.</p>
+    <div class="tt-wrap"><table class="tt"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <h3>Zustandsdiagramm</h3><p class="muted">${legend}</p><div class="diagram">${stateDiagramSVG(nodes, edges)}</div>
+    <h3>Folgezustände (DMF)</h3>${eq(a.eqs.next)}
+    <h3>Ansteuergleichungen</h3>${eq(a.eqs.exc)}
+    ${a.outputs.length ? '<h3>Ausgänge</h3>' + eq(a.eqs.outs) : ''}
+    <div class="row" style="margin-top:14px"><button class="btn" id="saComb">Kombinatorische Tabelle</button></div></div>`, true);
+  $('#saComb').onclick = () => { showTable.combinational = true; showTable(); };
+}
+
+// ---------- Automaten-Editor ----------
+let fsmEditor = null;
+function openFsm() {
+  if (!fsmEditor) fsmEditor = new FsmEditor({
+    toast, openDialog, closeDialog,
+    onBuild: c => { const n = addDoc('Automat', c); toast(`Schaltung „${n}“ erzeugt – mit „Start“ und „Takt“ ausprobieren.`, false, 4500); },
+  });
+  stopSim();
+  fsmEditor.open();
 }
 
 function buildFromDMF(t) {
@@ -665,12 +804,42 @@ function buildFromDMF(t) {
   toast(`Neue Schaltung „${n}“ aus der DMF erzeugt.`);
 }
 
+// Überstrich setzen/entfernen: markierter Bereich, sonst Variable oder Klammer direkt vor dem Cursor
+function toggleOverline(ta) {
+  const v = ta.value;
+  let s = ta.selectionStart ?? v.length, e = ta.selectionEnd ?? s;
+  if (s === e) {
+    let i = s;
+    while (i > 0 && v[i - 1] === OV) i--;
+    if (i > 0 && v[i - 1] === ')') {
+      let depth = 0, j = i - 1;
+      for (; j >= 0; j--) { if (v[j] === ')') depth++; else if (v[j] === '(') { depth--; if (!depth) break; } }
+      if (j < 0) return false;
+      s = j; e = i;
+    } else {
+      let j = i;
+      while (j > 0 && /[A-Za-z0-9ÄÖÜäöüß_\u0305]/.test(v[j - 1])) j--;
+      if (j === i) return false;
+      s = j; e = i;
+    }
+    while (e < v.length && v[e] === OV) e++;
+  }
+  const part = v.slice(s, e);
+  const chars = [...part.replace(/\u0305/g, '').replace(/\s+/g, '')];
+  const allOver = chars.length && [...part.replace(/\s+/g, '')].filter(ch => ch !== OV).length * 2 === [...part.replace(/\s+/g, '')].length;
+  const out = allOver ? chars.join('') : chars.map(ch => ch + OV).join('');
+  ta.value = v.slice(0, s) + out + v.slice(e);
+  ta.selectionStart = ta.selectionEnd = s + out.length;
+  return true;
+}
+
 function showFormula(preset = '') {
   openDialog(`<div class="dialog"><h2>Schaltung aus Formel <button class="close">✕</button></h2>
     <div class="field"><label>Ausdrücke (eine Gleichung pro Zeile)</label>
-      <textarea id="fIn" class="mono" rows="4" placeholder="Y = A ∧ ¬B ∨ ¬A ∧ B">${esc(preset)}</textarea></div>
-    <div class="keys">${['∧', '∨', '¬', '⊕', '(', ')', '='].map(k => `<button class="chip" data-k="${k}">${k}</button>`).join('')}</div>
-    <p class="muted">Erlaubt: ∧ &amp; * (und), ∨ | + (oder), ¬ ! / oder nachgestelltes ' (nicht), ⊕ ^ (xor), Klammern, 0 und 1.</p>
+      <textarea id="fIn" class="formula" rows="3" placeholder="Y = A ∧ B${OV} ∨ A${OV} ∧ B" autocapitalize="characters" autocomplete="off" spellcheck="false">${esc(preset)}</textarea></div>
+    <div class="keys"><button class="chip ov-key" data-k="ov" title="Überstrich (Negation)"><span class="ov">&nbsp;A&nbsp;</span> Strich</button>${['∧', '∨', '⊕', '(', ')', '='].map(k => `<button class="chip" data-k="${k}">${k}</button>`).join('')}</div>
+    <p class="muted"><b>Negieren:</b> Variable oder Klammerausdruck markieren – oder direkt dahinter tippen – und „Strich“ drücken. Nochmal drücken entfernt den Strich.<br>
+    Auch per Tastatur möglich: ∧ &amp; * (und), ∨ | + (oder), ⊕ ^ (xor), ¬ ! / (nicht).</p>
     <div id="fPrev" class="expr-preview"></div>
     <div class="row"><button class="btn primary" id="fBuild">Schaltung erzeugen</button></div></div>`);
   const ta = $('#fIn');
@@ -679,12 +848,18 @@ function showFormula(preset = '') {
     catch (e) { $('#fPrev').innerHTML = ta.value.trim() ? `<div class="err">${esc(e.message)}</div>` : ''; }
   };
   ta.oninput = prev; prev();
+  // Tasten sollen den Fokus (und die Markierung) im Textfeld nicht wegnehmen
+  $('#sheet').querySelector('.keys').addEventListener('pointerdown', e => e.preventDefault());
   $('#sheet').querySelector('.keys').onclick = e => {
-    const k = e.target.dataset.k; if (!k) return;
-    const s = ta.selectionStart ?? ta.value.length, en = ta.selectionEnd ?? s;
-    const ins = k === '=' ? ' = ' : k;
-    ta.value = ta.value.slice(0, s) + ins + ta.value.slice(en);
-    ta.selectionStart = ta.selectionEnd = s + ins.length; ta.focus(); prev();
+    const k = e.target.closest('[data-k]')?.dataset.k; if (!k) return;
+    if (k === 'ov') { if (!toggleOverline(ta)) toast('Erst eine Variable tippen oder einen Bereich markieren.'); }
+    else {
+      const s = ta.selectionStart ?? ta.value.length, en = ta.selectionEnd ?? s;
+      const ins = k === '=' ? ' = ' : k === '(' || k === ')' ? k : ' ' + k + ' ';
+      ta.value = ta.value.slice(0, s) + ins + ta.value.slice(en);
+      ta.selectionStart = ta.selectionEnd = s + ins.length;
+    }
+    ta.focus(); prev();
   };
   $('#fBuild').onclick = () => {
     let defs;
@@ -810,4 +985,4 @@ window.addEventListener('keydown', e => {
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 
 // zum Testen
-window.__app = { editor, get circuit() { return circuit; }, get current() { return current; }, library, setCurrent, addDoc, loadExample, parseDig, writeDig, startSim, stopSim, Circuit, recorder, runAllTests, showTable, showKV, showFormula, toggleGraph };
+window.__app = { showTTEditor, showStateAnalysis, openFsm, get fsmEditor() { return fsmEditor; }, editor, get circuit() { return circuit; }, get current() { return current; }, library, setCurrent, addDoc, loadExample, parseDig, writeDig, startSim, stopSim, Circuit, recorder, runAllTests, showTable, showKV, showFormula, toggleGraph };

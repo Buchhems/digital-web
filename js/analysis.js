@@ -1,6 +1,6 @@
 // Wahrheitstabelle und minimierte Ausdrücke (Quine-McCluskey)
 import { Sim } from './sim.js';
-import { attrsOf } from './components.js';
+import { attrsOf, pinsWorld } from './components.js';
 
 const natural = (a, b) => a.localeCompare(b, 'de', { numeric: true });
 const SEQ = new Set(['D_FF', 'JK_FF', 'RS_FF', 'T_FF', 'Counter', 'Register', 'Clock']);
@@ -17,18 +17,26 @@ export function truthTable(circuit, opts = {}) {
   const I = ins.map((c, i) => ({ c, name: name(c, i, 'E'), bits: attrsOf(c).Bits || 1 })).sort((a, b) => natural(a.name, b.name));
   const O = outs.map((c, i) => ({ c, name: name(c, i, 'Y'), bits: attrsOf(c).Bits || 1 })).sort((a, b) => natural(a.name, b.name));
 
-  // Zwischenschritte: beschriftete Gatter und Messwerte (bzw. alle Gatter)
-  const stepComps = circuit.comps.filter(c => (GATES.has(c.type) && (attrsOf(c).Label || opts.allGates)) || (c.type === 'Probe' && attrsOf(c).Label));
-  const byPos = (a, b) => a.c.x - b.c.x || a.c.y - b.c.y;
-  let auto = 0;
-  const Z = stepComps.map(c => ({ c })).sort(byPos).map(z => ({ ...z, name: attrsOf(z.c).Label || 'G' + ++auto, auto: !attrsOf(z.c).Label }));
-  if (Z.every(z => !z.auto)) Z.sort((a, b) => natural(a.name, b.name));
+  // Zwischenschritte: beschriftete Gatter, Messwerte und Bausteine (bzw. alle Gatter und Bausteine)
+  const stepComps = circuit.comps.filter(c => ((GATES.has(c.type) || c.type === 'Sub') && (attrsOf(c).Label || opts.allGates)) || (c.type === 'Probe' && attrsOf(c).Label));
+  const byPos = (a, b) => a.c.x - b.c.x || a.c.y - b.c.y || (a.k || 0) - (b.k || 0);
+  let auto = 0, autoSub = 0;
+  const Z = [];
+  for (const c of [...stepComps].sort((a, b) => a.x - b.x || a.y - b.y)) {
+    const label = attrsOf(c).Label;
+    if (c.type === 'Sub') {
+      const base = label || c.sub + '#' + ++autoSub;
+      pinsWorld(c).filter(p => p.out).forEach((p, k) => Z.push({ c, k, base, name: base + '.' + p.n, bits: p.bits || 1, auto: !label }));
+    } else Z.push({ c, name: label || 'G' + ++auto, auto: !label });
+  }
+  Z.sort(byPos);
+  if (Z.every(z => !z.auto)) Z.sort((a, b) => natural(a.base || a.name, b.base || b.name) || (a.k || 0) - (b.k || 0));
 
   const total = I.reduce((s, x) => s + x.bits, 0);
   if (total > 12) throw new Error(`Zu viele Eingangsbits (${total}). Möglich sind höchstens 12.`);
   const sequential = circuit.comps.some(c => SEQ.has(c.type));
   const sim = new Sim(circuit);
-  for (const z of Z) z.bits = z.c.type === 'Probe' ? (sim.st(z.c).bits[0] || 1) : (attrsOf(z.c).Bits || 1);
+  for (const z of Z) if (z.c.type !== 'Sub') z.bits = z.c.type === 'Probe' ? (sim.st(z.c).bits[0] || 1) : (attrsOf(z.c).Bits || 1);
   const rows = [];
   for (let r = 0; r < 2 ** total; r++) {
     let rest = total;
@@ -37,7 +45,7 @@ export function truthTable(circuit, opts = {}) {
     sim.run(I.map(x => x.c));
     rows.push({
       ins: vals,
-      steps: Z.map(z => (z.c.type === 'Probe' ? sim.st(z.c).ins[0] : sim.st(z.c).outs[0])),
+      steps: Z.map(z => (z.c.type === 'Sub' ? sim.subOut(z.c, z.k) : z.c.type === 'Probe' ? sim.st(z.c).ins[0] : sim.st(z.c).outs[0])),
       outs: O.map(o => sim.st(o.c).ins[0]),
     });
   }
@@ -55,10 +63,11 @@ export function truthTable(circuit, opts = {}) {
 }
 
 // Liefert die gewählten Primimplikanten {v, m} (m = Bitmaske der wegfallenden Variablen)
-export function minimizeTerms(n, minterms) {
+// dcs: "don't care"-Zeilen (X), dürfen zur Vereinfachung mitbenutzt werden
+export function minimizeTerms(n, minterms, dcs = []) {
   if (!minterms.length) return [];
-  if (minterms.length === 2 ** n) return [{ v: 0, m: 2 ** n - 1 }];
-  let cur = new Map(minterms.map(v => [v + ':0', { v, m: 0 }]));
+  if (minterms.length + dcs.length >= 2 ** n) return [{ v: 0, m: 2 ** n - 1 }];
+  let cur = new Map([...minterms, ...dcs].map(v => [v + ':0', { v, m: 0 }]));
   const primes = [];
   while (cur.size) {
     const next = new Map(), used = new Set();
@@ -106,9 +115,16 @@ export function termToString(p, n, names) {
   return lits.join(' ∧ ');
 }
 
-export function minimize(n, minterms, names) {
+export function minimize(n, minterms, names, dcs = []) {
   if (!minterms.length) return '0';
-  if (minterms.length === 2 ** n) return '1';
-  return minimizeTerms(n, minterms).map(p => termToString(p, n, names)).join('  ∨  ');
+  if (minterms.length + dcs.length >= 2 ** n) return '1';
+  return minimizeTerms(n, minterms, dcs).map(p => termToString(p, n, names)).join('  ∨  ');
+}
+
+// Ausdruck-Objekt für eine Spalte (Werte 0/1/'X' je Zeile)
+export function columnExpr(name, vars, values) {
+  const ones = [], dcs = [];
+  values.forEach((v, i) => { if (v === 'X') dcs.push(i); else if (v) ones.push(i); });
+  return { name, vars, ones, dcs, terms: minimizeTerms(vars.length, ones, dcs) };
 }
 const popcount = x => { let c = 0; while (x) { c += x & 1; x >>>= 1; } return c; };

@@ -11,6 +11,8 @@ liest und schreibt dessen `.dig`-Dateien.
 - **Bauteile:** Ein-/Ausgänge (auch mehrbittig), LED, Taster, Takt, Konstante, Masse/Versorgung, Messwert, 7-Segment-Anzeigen, UND/ODER/NICHT/NAND/NOR/XOR/XNOR (2–16 Eingänge, Eingänge negierbar), Tunnel, Splitter, Multiplexer, Demultiplexer, Decoder, RS-, JK-, D- und T-Flipflop, Addierer, Komparator, Zähler, Register, Text
 - **Simulation** mit Farbcodierung der Leitungen (hellgrün = 1, dunkelgrün = 0, blau = offen, rot = Fehler). Sie erkennt Kurzschlüsse, falsche Bitbreiten und schwingende Schaltungen.
 - **Wahrheitstabelle** per Knopfdruck mit **Zwischenschritten**: Beschriftete Gatter (z. B. „Z1“) erscheinen als eigene Spalten, wahlweise auch alle Gatter. Dazu kommen die **disjunktive Minimalform (DMF)** mit Negation als Überstrich und **KV-Diagramme** mit farbig markierten Primimplikanten.
+- **Wahrheitstabelle eingeben** (auch mit X = don't care) → DMF, KV-Diagramm und Schaltung. **Übungsmodus:** Ausgänge einer Schaltung selbst ausfüllen und prüfen lassen.
+- **Schaltwerke:** Zustandsanalyse von Schaltungen mit D-, JK-, T- und RS-Flipflops (Zustandsübergangstabelle, Ansteuerung, Zustandsdiagramm, Gleichungen) sowie ein **Automaten-Editor** (Moore), der aus dem Zustandsdiagramm eine Schaltung mit D-Flipflops erzeugt.
 - **Schaltungssynthese:** Schaltung aus der DMF oder aus einer eingegebenen Formel erzeugen (z. B. `Y = ¬(A ∧ B) ∨ C`).
 - **Eigene Bausteine (Teilschaltungen):** Ein Projekt kann mehrere Schaltungen enthalten, und jede lässt sich in den anderen als Baustein einsetzen. Die Anschlüsse sind die beschrifteten Ein- und Ausgänge, wie in Digital.
 - **Messgraph:** Zeitdiagramm aller Ein- und Ausgänge während der Simulation. Die Taktfrequenz ist auch während der Simulation einstellbar.
@@ -56,6 +58,8 @@ python3 -m http.server 8000
 | `js/testcase.js` | Testfälle |
 | `js/lib.js` | Projekt-Bibliothek für Bausteine |
 | `js/zip.js` | ZIP lesen/schreiben |
+| `js/seq.js` | Schaltwerke: Zustandsanalyse, Zustandsdiagramm, Automaten-Synthese |
+| `js/fsmeditor.js` | Automaten-Editor |
 | `js/app.js` | Oberfläche, Dialoge, Speichern |
 | `js/examples.js` | Beispielschaltungen |
 

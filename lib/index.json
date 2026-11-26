@@ -1,0 +1,1924 @@
+[
+{
+"name": "7480",
+"path": "lib/74xx/arithmetic/7480.dig",
+"group": "arithmetic",
+"desc": "Gated Full Adder with Complementary Inputs",
+"elements": [
+"And",
+"In",
+"NOr",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "7482",
+"path": "lib/74xx/arithmetic/7482.dig",
+"group": "arithmetic",
+"desc": "2-bit binary full adder",
+"elements": [
+"Add",
+"In",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7483",
+"path": "lib/74xx/arithmetic/7483.dig",
+"group": "arithmetic",
+"desc": "4-bit binary full adder",
+"elements": [
+"Add",
+"In",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7483Real",
+"path": "lib/74xx/arithmetic/7483Real.dig",
+"group": "arithmetic",
+"desc": "4-bit binary full adder, real gates",
+"elements": [
+"And",
+"In",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "7485",
+"path": "lib/74xx/arithmetic/7485.dig",
+"group": "arithmetic",
+"desc": "4-bit comparator",
+"elements": [
+"And",
+"In",
+"NAnd",
+"NOr",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74147",
+"path": "lib/74xx/arithmetic/74147.dig",
+"group": "arithmetic",
+"desc": "10-line to 4-line priority encoder",
+"elements": [
+"And",
+"In",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74148",
+"path": "lib/74xx/arithmetic/74148.dig",
+"group": "arithmetic",
+"desc": "8-line to 3-Line priority encoder",
+"elements": [
+"And",
+"In",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74181",
+"path": "lib/74xx/arithmetic/74181.dig",
+"group": "arithmetic",
+"desc": "4-bit arithmetic logic unit",
+"elements": [
+"And",
+"In",
+"NAnd",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase",
+"Text",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "74182",
+"path": "lib/74xx/arithmetic/74182.dig",
+"group": "arithmetic",
+"desc": "look-ahead carry generator",
+"elements": [
+"And",
+"In",
+"NOr",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74198",
+"path": "lib/74xx/arithmetic/74198.dig",
+"group": "arithmetic",
+"desc": "8-bit shift register",
+"elements": [
+"Const",
+"D_FF_AS",
+"In",
+"Multiplexer",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74280",
+"path": "lib/74xx/arithmetic/74280.dig",
+"group": "arithmetic",
+"desc": "9 bit Odd-Even Parity Generator-Checker",
+"elements": [
+"And",
+"In",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74283",
+"path": "lib/74xx/arithmetic/74283.dig",
+"group": "arithmetic",
+"desc": "4-bit binary full adder, alternative pinning",
+"elements": [
+"Add",
+"In",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74381",
+"path": "lib/74xx/arithmetic/74381.dig",
+"group": "arithmetic",
+"desc": "4-Bit Arithmetic Logic Unit with high-speed expansion",
+"elements": [
+"And",
+"In",
+"NAnd",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "74382",
+"path": "lib/74xx/arithmetic/74382.dig",
+"group": "arithmetic",
+"desc": "4-Bit Arithmetic Logic Unit with ripple carry output",
+"elements": [
+"And",
+"In",
+"NAnd",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "74682",
+"path": "lib/74xx/arithmetic/74682.dig",
+"group": "arithmetic",
+"desc": "8-bit digital comparator",
+"elements": [
+"Comparator",
+"In",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74688",
+"path": "lib/74xx/arithmetic/74688.dig",
+"group": "arithmetic",
+"desc": "8-bit identity comparator",
+"elements": [
+"In",
+"NAnd",
+"NOr",
+"Out",
+"PowerSupply",
+"Testcase",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "7400",
+"path": "lib/74xx/basic/7400.dig",
+"group": "basic",
+"desc": "quad 2-input NAND gate",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7401",
+"path": "lib/74xx/basic/7401.dig",
+"group": "basic",
+"desc": "quad 2-input NAND gate with open-collector outputs",
+"elements": [
+"And",
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7402",
+"path": "lib/74xx/basic/7402.dig",
+"group": "basic",
+"desc": "quad 2-input NOR gate",
+"elements": [
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7403",
+"path": "lib/74xx/basic/7403.dig",
+"group": "basic",
+"desc": "quad 2-input NAND gate with open-collector outputs, different pinout than 7401",
+"elements": [
+"And",
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7404",
+"path": "lib/74xx/basic/7404.dig",
+"group": "basic",
+"desc": "hex inverter",
+"elements": [
+"In",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7405",
+"path": "lib/74xx/basic/7405.dig",
+"group": "basic",
+"desc": "hex inverter, open-collector output",
+"elements": [
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7408",
+"path": "lib/74xx/basic/7408.dig",
+"group": "basic",
+"desc": "quad 2-input AND gate",
+"elements": [
+"And",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7409",
+"path": "lib/74xx/basic/7409.dig",
+"group": "basic",
+"desc": "quad 2-input AND gate with open-collector outputs",
+"elements": [
+"Ground",
+"In",
+"NAnd",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7410",
+"path": "lib/74xx/basic/7410.dig",
+"group": "basic",
+"desc": "triple 3-input NAND gate",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7411",
+"path": "lib/74xx/basic/7411.dig",
+"group": "basic",
+"desc": "triple 3-input AND gate",
+"elements": [
+"And",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7412",
+"path": "lib/74xx/basic/7412.dig",
+"group": "basic",
+"desc": "triple 3-input NAND gate with open-collector outputs",
+"elements": [
+"And",
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7413",
+"path": "lib/74xx/basic/7413.dig",
+"group": "basic",
+"desc": "dual 4-input NAND gate, Schmitt trigger",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7414",
+"path": "lib/74xx/basic/7414.dig",
+"group": "basic",
+"desc": "hex inverter, Schmitt trigger",
+"elements": [
+"In",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7415",
+"path": "lib/74xx/basic/7415.dig",
+"group": "basic",
+"desc": "triple 3-input AND gate with open-collector outputs",
+"elements": [
+"Ground",
+"In",
+"NAnd",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7420",
+"path": "lib/74xx/basic/7420.dig",
+"group": "basic",
+"desc": "dual 4-input NAND gate",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7421",
+"path": "lib/74xx/basic/7421.dig",
+"group": "basic",
+"desc": "dual 4-input AND gate",
+"elements": [
+"And",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7425",
+"path": "lib/74xx/basic/7425.dig",
+"group": "basic",
+"desc": "dual 4-input NOR gate with strobe",
+"elements": [
+"In",
+"NAnd",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7427",
+"path": "lib/74xx/basic/7427.dig",
+"group": "basic",
+"desc": "triple 3-input NOR gate",
+"elements": [
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7428",
+"path": "lib/74xx/basic/7428.dig",
+"group": "basic",
+"desc": "quad 2-input NOR buffer",
+"elements": [
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7430",
+"path": "lib/74xx/basic/7430.dig",
+"group": "basic",
+"desc": "8-input NAND gate",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7432",
+"path": "lib/74xx/basic/7432.dig",
+"group": "basic",
+"desc": "quad 2-input OR gate",
+"elements": [
+"In",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7434",
+"path": "lib/74xx/basic/7434.dig",
+"group": "basic",
+"desc": "hex buffer",
+"elements": [
+"In",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7440",
+"path": "lib/74xx/basic/7440.dig",
+"group": "basic",
+"desc": "dual 4-input NAND buffer",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7451",
+"path": "lib/74xx/basic/7451.dig",
+"group": "basic",
+"desc": "2-input/3-input AND-NOR gate",
+"elements": [
+"And",
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7454",
+"path": "lib/74xx/basic/7454.dig",
+"group": "basic",
+"desc": "2-3-2-3-line AND NOR gate",
+"elements": [
+"And",
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7455",
+"path": "lib/74xx/basic/7455.dig",
+"group": "basic",
+"desc": "2 wide 4-input AND-NOR gate",
+"elements": [
+"And",
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7458",
+"path": "lib/74xx/basic/7458.dig",
+"group": "basic",
+"desc": "dual AND OR gate",
+"elements": [
+"And",
+"In",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7486",
+"path": "lib/74xx/basic/7486.dig",
+"group": "basic",
+"desc": "quad 2-input XOR gate",
+"elements": [
+"In",
+"Out",
+"PowerSupply",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "74133",
+"path": "lib/74xx/basic/74133.dig",
+"group": "basic",
+"desc": "13-input NAND gate",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74260",
+"path": "lib/74xx/basic/74260.dig",
+"group": "basic",
+"desc": "dual 5-input NOR gate",
+"elements": [
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74266",
+"path": "lib/74xx/basic/74266.dig",
+"group": "basic",
+"desc": "quad 2-input XNOR gate with open collector outputs",
+"elements": [
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "74804",
+"path": "lib/74xx/basic/74804.dig",
+"group": "basic",
+"desc": "hex 2-input NAND gate",
+"elements": [
+"In",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74805",
+"path": "lib/74xx/basic/74805.dig",
+"group": "basic",
+"desc": "hex 2-input NOR gate",
+"elements": [
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74808",
+"path": "lib/74xx/basic/74808.dig",
+"group": "basic",
+"desc": "hex 2-input AND gate",
+"elements": [
+"And",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74832",
+"path": "lib/74xx/basic/74832.dig",
+"group": "basic",
+"desc": "hex 2-input OR gate",
+"elements": [
+"In",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "744002",
+"path": "lib/74xx/basic/744002.dig",
+"group": "basic",
+"desc": "dual 4-input NOR gate",
+"elements": [
+"In",
+"NOr",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "744075",
+"path": "lib/74xx/basic/744075.dig",
+"group": "basic",
+"desc": "triple 3-input OR gate",
+"elements": [
+"In",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "747266",
+"path": "lib/74xx/basic/747266.dig",
+"group": "basic",
+"desc": "quad 2-input XNOR gate",
+"elements": [
+"In",
+"Out",
+"PowerSupply",
+"XNOr"
+],
+"internal": false
+},
+{
+"name": "7490",
+"path": "lib/74xx/counter/7490.dig",
+"group": "counter",
+"desc": "asynchronous two - five - decimal addition counter",
+"elements": [
+"And",
+"Ground",
+"In",
+"JK_FF_AS",
+"NAnd",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7493",
+"path": "lib/74xx/counter/7493.dig",
+"group": "counter",
+"desc": "4-bit Binary Counter.",
+"elements": [
+"Const",
+"In",
+"JK_FF_AS",
+"NAnd",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74160",
+"path": "lib/74xx/counter/74160.dig",
+"group": "counter",
+"desc": "decimal synchronous counter, async clear",
+"elements": [
+"Add",
+"And",
+"Clock",
+"Comparator",
+"Const",
+"D_FF_AS",
+"Ground",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74161",
+"path": "lib/74xx/counter/74161.dig",
+"group": "counter",
+"desc": "hex synchronous counter, async clear",
+"elements": [
+"Add",
+"And",
+"Clock",
+"Const",
+"D_FF_AS",
+"Ground",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74162",
+"path": "lib/74xx/counter/74162.dig",
+"group": "counter",
+"desc": "Decimal Synchronous Counter",
+"elements": [
+"Add",
+"And",
+"Clock",
+"Comparator",
+"Const",
+"D_FF",
+"Ground",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74162Real",
+"path": "lib/74xx/counter/74162Real.dig",
+"group": "counter",
+"desc": "decimal synchronous counter, real gates",
+"elements": [
+"And",
+"Clock",
+"D_FF",
+"In",
+"NAnd",
+"NOr",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"XNOr"
+],
+"internal": false
+},
+{
+"name": "74163",
+"path": "lib/74xx/counter/74163.dig",
+"group": "counter",
+"desc": "hex synchronous counter",
+"elements": [
+"Add",
+"And",
+"Clock",
+"Const",
+"D_FF",
+"Ground",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74190",
+"path": "lib/74xx/counter/74190.dig",
+"group": "counter",
+"desc": "Presettable synchronous 4-bit bcd up/down counter",
+"elements": [
+"And",
+"Clock",
+"In",
+"JK_FF_AS",
+"NAnd",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"Text"
+],
+"internal": false
+},
+{
+"name": "74191",
+"path": "lib/74xx/counter/74191.dig",
+"group": "counter",
+"desc": "Presettable synchronous 4-bit binary up/down counter",
+"elements": [
+"And",
+"Clock",
+"In",
+"JK_FF_AS",
+"NAnd",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74193",
+"path": "lib/74xx/counter/74193.dig",
+"group": "counter",
+"desc": "Synchronous 4-Bit Up/Down Binary Counter with Dual Clock",
+"elements": [
+"And",
+"In",
+"JK_FF_AS",
+"NAnd",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"VDD"
+],
+"internal": false
+},
+{
+"name": "74590",
+"path": "lib/74xx/counter/74590.dig",
+"group": "counter",
+"desc": "8-bit binary counter with tri-state output registers",
+"elements": [
+"And",
+"Clock",
+"D_FF",
+"DriverInvSel",
+"Ground",
+"In",
+"JK_FF_AS",
+"NAnd",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74779",
+"path": "lib/74xx/counter/74779.dig",
+"group": "counter",
+"desc": "8-Bit Bidirectional Binary Counter with 3-STATE Outputs",
+"elements": [
+"74779-inc.dig",
+"And",
+"Driver",
+"In",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74779-inc",
+"path": "lib/74xx/counter/74779-inc.dig",
+"group": "counter",
+"desc": "flip flop part of 74779",
+"elements": [
+"And",
+"Clock",
+"D_FF",
+"In",
+"Not",
+"Or",
+"Out"
+],
+"internal": true
+},
+{
+"name": "744017",
+"path": "lib/74xx/counter/744017.dig",
+"group": "counter",
+"desc": "Johnson decade counter with 10 decoded outputs",
+"elements": [
+"And",
+"D_FF_AS",
+"Ground",
+"In",
+"NOr",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7447",
+"path": "lib/74xx/display/7447.dig",
+"group": "display",
+"desc": "BCD to 7-segment decoder, active low",
+"elements": [
+"And",
+"Delay",
+"Driver",
+"Ground",
+"In",
+"NAnd",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"PullUp",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7448",
+"path": "lib/74xx/display/7448.dig",
+"group": "display",
+"desc": "BCD to 7-segment decoder, active high",
+"elements": [
+"And",
+"Delay",
+"Driver",
+"Ground",
+"In",
+"NAnd",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"PullUp",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74247",
+"path": "lib/74xx/display/74247.dig",
+"group": "display",
+"desc": "BCD to 7-segment decoder, active low, tails on 6 and 9",
+"elements": [
+"And",
+"Delay",
+"Driver",
+"Ground",
+"In",
+"NAnd",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"PullUp",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74248",
+"path": "lib/74xx/display/74248.dig",
+"group": "display",
+"desc": "BCD to 7-segment decoder, active high, tails on 6 and 9",
+"elements": [
+"And",
+"Delay",
+"Driver",
+"Ground",
+"In",
+"NAnd",
+"NOr",
+"Not",
+"Out",
+"PowerSupply",
+"PullUp",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7406",
+"path": "lib/74xx/driver/7406.dig",
+"group": "driver",
+"desc": "hex inverter buffer, open-collector output",
+"elements": [
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7407",
+"path": "lib/74xx/driver/7407.dig",
+"group": "driver",
+"desc": "hex buffer, open-collector output",
+"elements": [
+"Ground",
+"In",
+"NFET",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7416",
+"path": "lib/74xx/driver/7416.dig",
+"group": "driver",
+"desc": "hex inverter buffer, open-collector output, same as 7406",
+"elements": [
+"Ground",
+"In",
+"NFET",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7417",
+"path": "lib/74xx/driver/7417.dig",
+"group": "driver",
+"desc": "hex buffer, open-collector output, same as 7407",
+"elements": [
+"Ground",
+"In",
+"NFET",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74125",
+"path": "lib/74xx/driver/74125.dig",
+"group": "driver",
+"desc": "Quadruple bus buffer gates with 3-state outputs (active low output enable)",
+"elements": [
+"Driver",
+"In",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74126",
+"path": "lib/74xx/driver/74126.dig",
+"group": "driver",
+"desc": "Quadruple bus buffer gates with 3-state outputs (active high output enable)",
+"elements": [
+"Driver",
+"In",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74244",
+"path": "lib/74xx/driver/74244.dig",
+"group": "driver",
+"desc": "octal 3-state buffer/line driver/line receiver",
+"elements": [
+"DriverInvSel",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74245",
+"path": "lib/74xx/driver/74245.dig",
+"group": "driver",
+"desc": "octal bus transceivers with 3-state outputs",
+"elements": [
+"And",
+"Driver",
+"In",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74540",
+"path": "lib/74xx/driver/74540.dig",
+"group": "driver",
+"desc": "octal buffer/line driver, inverted",
+"elements": [
+"Driver",
+"In",
+"NOr",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74541",
+"path": "lib/74xx/driver/74541.dig",
+"group": "driver",
+"desc": "octal buffer/line driver",
+"elements": [
+"Driver",
+"In",
+"NOr",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "7474",
+"path": "lib/74xx/flipflops/7474.dig",
+"group": "flipflops",
+"desc": "dual D-flip-flop",
+"elements": [
+"And",
+"D_FF_AS",
+"In",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "7476",
+"path": "lib/74xx/flipflops/7476.dig",
+"group": "flipflops",
+"desc": "dual J-K flip-flops with preset and clear",
+"elements": [
+"And",
+"In",
+"JK_FF_AS",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74107",
+"path": "lib/74xx/flipflops/74107.dig",
+"group": "flipflops",
+"desc": "dual J-K flip-flops with clear",
+"elements": [
+"Const",
+"In",
+"JK_FF_AS",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74109",
+"path": "lib/74xx/flipflops/74109.dig",
+"group": "flipflops",
+"desc": "Dual J-NOT-K flip-flop with set and reset; positive-edge-trigger",
+"elements": [
+"And",
+"Clock",
+"In",
+"JK_FF_AS",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74112",
+"path": "lib/74xx/flipflops/74112.dig",
+"group": "flipflops",
+"desc": "Dual J-K negative-edge-triggered flip-flop, clear and preset",
+"elements": [
+"And",
+"In",
+"JK_FF_AS",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"Text"
+],
+"internal": false
+},
+{
+"name": "74116",
+"path": "lib/74xx/flipflops/74116.dig",
+"group": "flipflops",
+"desc": "dual 4-bit D-type latches",
+"elements": [
+"And",
+"In",
+"Not",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74173",
+"path": "lib/74xx/flipflops/74173.dig",
+"group": "flipflops",
+"desc": "quad 3-state D flip-flop with common clock and reset",
+"elements": [
+"And",
+"Const",
+"D_FF_AS",
+"Driver",
+"In",
+"NOr",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74174",
+"path": "lib/74xx/flipflops/74174.dig",
+"group": "flipflops",
+"desc": "hex D-flip-flop",
+"elements": [
+"Const",
+"D_FF_AS",
+"In",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74175",
+"path": "lib/74xx/flipflops/74175.dig",
+"group": "flipflops",
+"desc": "quad D-flip-flop",
+"elements": [
+"Const",
+"D_FF_AS",
+"In",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74273",
+"path": "lib/74xx/flipflops/74273.dig",
+"group": "flipflops",
+"desc": "octal D-type flip-flop with clear",
+"elements": [
+"D_FF_AS",
+"Ground",
+"In",
+"Not",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74373",
+"path": "lib/74xx/flipflops/74373.dig",
+"group": "flipflops",
+"desc": "octal transparent latches",
+"elements": [
+"74373-D-inc.dig",
+"DriverInvSel",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74373-D-inc",
+"path": "lib/74xx/flipflops/74373-D-inc.dig",
+"group": "flipflops",
+"desc": "transparent d latch",
+"elements": [
+"And",
+"In",
+"Out",
+"RS_FF_AS"
+],
+"internal": true
+},
+{
+"name": "74374",
+"path": "lib/74xx/flipflops/74374.dig",
+"group": "flipflops",
+"desc": "octal positive-edge-triggered flip-flops",
+"elements": [
+"D_FF",
+"DriverInvSel",
+"In",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74377",
+"path": "lib/74xx/flipflops/74377.dig",
+"group": "flipflops",
+"desc": "Octal D Flip-Flop with enable",
+"elements": [
+"And",
+"Clock",
+"D_FF",
+"In",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74573",
+"path": "lib/74xx/flipflops/74573.dig",
+"group": "flipflops",
+"desc": "octal transparent latches, different pinout compared to 74373",
+"elements": [
+"74373-D-inc.dig",
+"DriverInvSel",
+"In",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74574",
+"path": "lib/74xx/flipflops/74574.dig",
+"group": "flipflops",
+"desc": "octal positive-edge-triggered flip-flops, different pinout compared to 74374",
+"elements": [
+"D_FF",
+"DriverInvSel",
+"In",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "7489",
+"path": "lib/74xx/memory/7489.dig",
+"group": "memory",
+"desc": "64-bit RAM",
+"elements": [
+"And",
+"Const",
+"In",
+"Multiplexer",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"RAMAsync",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74189",
+"path": "lib/74xx/memory/74189.dig",
+"group": "memory",
+"desc": "64-Bit Random Access Memory with 3-STATE Outputs",
+"elements": [
+"And",
+"Driver",
+"In",
+"Not",
+"Out",
+"PowerSupply",
+"RAMAsync",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74670",
+"path": "lib/74xx/memory/74670.dig",
+"group": "memory",
+"desc": "3-state 4-by-4 Register File",
+"elements": [
+"74670-D-inc.dig",
+"Demultiplexer",
+"DriverInvSel",
+"In",
+"Multiplexer",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74670-D-inc",
+"path": "lib/74xx/memory/74670-D-inc.dig",
+"group": "memory",
+"desc": "unclocked 4 bit D-latch",
+"elements": [
+"And",
+"In",
+"Out",
+"RS_FF_AS",
+"Splitter"
+],
+"internal": true
+},
+{
+"name": "7440105",
+"path": "lib/74xx/memory/7440105.dig",
+"group": "memory",
+"desc": "4-Bit x 16-Word FIFO Register",
+"elements": [
+"And",
+"Const",
+"D_FF",
+"D_FF_AS",
+"DriverInvSel",
+"In",
+"Or",
+"Out",
+"PowerSupply",
+"Probe",
+"RS_FF_AS",
+"Splitter",
+"Testcase",
+"XOr"
+],
+"internal": false
+},
+{
+"name": "7442",
+"path": "lib/74xx/plexers/7442.dig",
+"group": "plexers",
+"desc": "4-line BCD to 10-line decimal decoder",
+"elements": [
+"Demultiplexer",
+"Ground",
+"In",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74138",
+"path": "lib/74xx/plexers/74138.dig",
+"group": "plexers",
+"desc": "3-line to 8-line decoder/demultiplexer, inverted out",
+"elements": [
+"Delay",
+"Demultiplexer",
+"In",
+"NAnd",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74139",
+"path": "lib/74xx/plexers/74139.dig",
+"group": "plexers",
+"desc": "dual 2-line to 4-line decoder/demultiplexer",
+"elements": [
+"Demultiplexer",
+"In",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74150",
+"path": "lib/74xx/plexers/74150.dig",
+"group": "plexers",
+"desc": "4-line to 16-line data selectors/multiplexers",
+"elements": [
+"In",
+"Multiplexer",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74151",
+"path": "lib/74xx/plexers/74151.dig",
+"group": "plexers",
+"desc": "3-line to 8-line data selectors/multiplexers",
+"elements": [
+"And",
+"In",
+"Multiplexer",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74153",
+"path": "lib/74xx/plexers/74153.dig",
+"group": "plexers",
+"desc": "dual 4-line to 1-line data selectors/multiplexers",
+"elements": [
+"And",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74154",
+"path": "lib/74xx/plexers/74154.dig",
+"group": "plexers",
+"desc": "4-line to 16-line decoders/demultiplexers",
+"elements": [
+"Delay",
+"Demultiplexer",
+"In",
+"Or",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74157",
+"path": "lib/74xx/plexers/74157.dig",
+"group": "plexers",
+"desc": "quad 2-line to 1-line data selectors/multiplexers",
+"elements": [
+"Ground",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74238",
+"path": "lib/74xx/plexers/74238.dig",
+"group": "plexers",
+"desc": "3-line to 8-line decoder/demultiplexer",
+"elements": [
+"And",
+"Delay",
+"Demultiplexer",
+"In",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74253",
+"path": "lib/74xx/plexers/74253.dig",
+"group": "plexers",
+"desc": "dual tri state 4-line to 1-line data selectors/multiplexers",
+"elements": [
+"DriverInvSel",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+},
+{
+"name": "74257",
+"path": "lib/74xx/plexers/74257.dig",
+"group": "plexers",
+"desc": "quad 2-line to 1-line data selectors/multiplexers (3-state output)",
+"elements": [
+"DriverInvSel",
+"In",
+"Multiplexer",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74164",
+"path": "lib/74xx/shift register/74164.dig",
+"group": "shift register",
+"desc": "8-bit parallel-out serial shift register, asynchronous clear",
+"elements": [
+"And",
+"Const",
+"D_FF_AS",
+"In",
+"Not",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74165",
+"path": "lib/74xx/shift register/74165.dig",
+"group": "shift register",
+"desc": "parallel-load 8-bit shift register",
+"elements": [
+"And",
+"D_FF_AS",
+"In",
+"NAnd",
+"Not",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74166",
+"path": "lib/74xx/shift register/74166.dig",
+"group": "shift register",
+"desc": "8-Bit Parallel-In/Serial-Out Shift Register",
+"elements": [
+"And",
+"Const",
+"D_FF_AS",
+"In",
+"Not",
+"Or",
+"Out",
+"PowerSupply"
+],
+"internal": false
+},
+{
+"name": "74194",
+"path": "lib/74xx/shift register/74194.dig",
+"group": "shift register",
+"desc": "4-Bit Bidirectional Universal Shift Register",
+"elements": [
+"Const",
+"D_FF_AS",
+"In",
+"Multiplexer",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase",
+"Text",
+"Tunnel"
+],
+"internal": false
+},
+{
+"name": "74194real",
+"path": "lib/74xx/shift register/74194real.dig",
+"group": "shift register",
+"desc": "4-Bit Bidirectional Universal Shift Register, Databook implementation.",
+"elements": [
+"And",
+"Clock",
+"Const",
+"D_FF_AS",
+"In",
+"NOr",
+"Not",
+"Or",
+"Out",
+"PowerSupply",
+"Testcase",
+"Text"
+],
+"internal": false
+},
+{
+"name": "74299",
+"path": "lib/74xx/shift register/74299.dig",
+"group": "shift register",
+"desc": "8-Input Universal Shift/Storage Register",
+"elements": [
+"And",
+"Clock",
+"D_FF_AS",
+"Driver",
+"Ground",
+"In",
+"Multiplexer",
+"NAnd",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter",
+"Testcase"
+],
+"internal": false
+},
+{
+"name": "74595",
+"path": "lib/74xx/shift register/74595.dig",
+"group": "shift register",
+"desc": "8-Bit Shift Registers with 3-State Output Registers",
+"elements": [
+"Const",
+"D_FF",
+"D_FF_AS",
+"DriverInvSel",
+"In",
+"Not",
+"Out",
+"PowerSupply",
+"Splitter"
+],
+"internal": false
+}
+]

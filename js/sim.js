@@ -1,5 +1,5 @@
 // Ereignisgesteuerter Simulator mit Einheitsverzögerung pro Bauteil
-import { DEF, attrsOf, geoOf } from './components.js';
+import { DEF, attrsOf, geoOf, mask } from './components.js';
 import { buildNets } from './circuit.js';
 
 export class Sim {
@@ -19,6 +19,7 @@ export class Sim {
     }
     if (nets.some(n => n.error === 'bits')) this.errors.push('Bitbreiten passen an einer Leitung nicht zusammen (rot markiert).');
     this.oscillating = false;
+    for (const net of nets) if (net.drivers.some(d => DEF[d.c.type].pull)) this.resolve(net);
     this.run(this.comps);
   }
 
@@ -30,13 +31,17 @@ export class Sim {
   }
 
   resolve(net) {
-    let val = null, conflict = false;
+    let val = null, conflict = false, pull = null;
     for (const d of net.drivers) {
+      const pl = DEF[d.c.type].pull;
+      if (pl) { pull = pl; continue; }
       const v = this.state.get(d.c.id)?.outs[d.i];
       if (v == null) continue;
       if (val == null) val = v; else if (v !== val) conflict = true;
     }
     if (conflict) { net.error = net.error || 'short'; } else if (net.error === 'short') net.error = null;
+    // offene Leitung mit Pull-up/Pull-down
+    if (val == null && pull) val = pull === 'up' ? mask(net.bits) : 0;
     net.value = val;
   }
 

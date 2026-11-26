@@ -13,8 +13,10 @@ liest und schreibt dessen `.dig`-Dateien.
 - **Wahrheitstabelle** per Knopfdruck mit **Zwischenschritten**: Beschriftete Gatter (z. B. „Z1“) erscheinen als eigene Spalten, wahlweise auch alle Gatter. Dazu kommen die **disjunktive Minimalform (DMF)** mit Negation als Überstrich und **KV-Diagramme** mit farbig markierten Primimplikanten.
 - **Wahrheitstabelle eingeben** (auch mit X = don't care) → DMF, KV-Diagramm und Schaltung. **Übungsmodus:** Ausgänge einer Schaltung selbst ausfüllen und prüfen lassen. Die Tabelle ist neben der Schaltung angedockt, sodass beides sichtbar bleibt.
 - **Schaltwerke:** Zustandsanalyse von Schaltungen mit D-, JK-, T- und RS-Flipflops (Zustandsübergangstabelle, Ansteuerung, Zustandsdiagramm, Gleichungen) sowie ein **Automaten-Editor** (Moore), der aus dem Zustandsdiagramm eine Schaltung mit D-Flipflops erzeugt.
+- **74xx-Bibliothek:** 118 Chips aus der Bibliothek von Digital (z. B. 7400, 7447, 74595, 74161), als DIL-Gehäuse mit Pin-Nummern. Sie werden beim Öffnen von .dig-Dateien automatisch nachgeladen. 48 Chips bestehen alle mitgelieferten Original-Testfälle von Digital, der 74595 einen eigenen Funktionstest.
 - **Schaltungssynthese:** Schaltung aus der DMF oder aus einer eingegebenen Formel erzeugen (z. B. `Y = ¬(A ∧ B) ∨ C`).
 - **Eigene Bausteine (Teilschaltungen):** Ein Projekt kann mehrere Schaltungen enthalten, und jede lässt sich in den anderen als Baustein einsetzen. Die Anschlüsse sind die beschrifteten Ein- und Ausgänge, wie in Digital.
+- **Bausteine bauen:** Teile einer Schaltung auswählen → „Als Baustein zusammenfassen“. Die Auswahl wird zu einer eigenen Schaltung mit Ein- und Ausgängen, an ihrer Stelle steht der neue Baustein und ist schon angeschlossen. Unter Menü → Projekt → „Aussehen als Baustein“ lassen sich Form (Rechteck oder DIL-Gehäuse wie ein IC), Breite, Pin-Nummern und eine Beschreibung einstellen.
 - **Messgraph:** Zeitdiagramm aller Ein- und Ausgänge während der Simulation. Die Taktfrequenz ist auch während der Simulation einstellbar.
 - **Testfälle** im Format von Digital (Bauteil „Testfall“). Ergebnis mit Markierung falscher Zeilen.
 - **Dateien:** Automatische Sicherung im Browser. Export als `.dig` (bei Bausteinen mehrere Dateien bzw. ZIP) oder PNG. Import von `.dig`- und `.zip`-Dateien, auch mehrere gleichzeitig.
@@ -57,9 +59,11 @@ python3 -m http.server 8000
 | `js/graph.js` | Messgraph |
 | `js/testcase.js` | Testfälle |
 | `js/lib.js` | Projekt-Bibliothek für Bausteine |
+| `js/module.js` | Auswahl → Baustein, einfache Leitungsführung |
 | `js/zip.js` | ZIP lesen/schreiben |
 | `js/seq.js` | Schaltwerke: Zustandsanalyse, Zustandsdiagramm, Automaten-Synthese |
 | `js/fsmeditor.js` | Automaten-Editor |
+| `lib/74xx/` | 74xx-Chips aus Digital, `lib/index.json` = Verzeichnis |
 | `js/app.js` | Oberfläche, Dialoge, Speichern |
 | `js/examples.js` | Beispielschaltungen |
 
@@ -69,6 +73,11 @@ Positionen, Raster (20), Anschlusspunkte und Drehung entsprechen dem Desktop-Pro
 Nicht unterstützte Bauteile aus `.dig`-Dateien werden als Platzhalter angezeigt und beim
 Speichern unverändert zurückgeschrieben.
 
+## Grenzen gegenüber Digital
+
+- Nicht nachgebaut: RAM/ROM/EEPROM, Transistor-/Schalterebene (der N-FET leitet nur in einer Richtung), Terminal, VGA und Ähnliches.
+- Aus der 74xx-Bibliothek fehlen deshalb 7489 und 74189 (RAM). Der FIFO 7440105 verhält sich nicht in allen Fällen wie im Original.
+
 ## Lizenz
 
-GPL-3.0, wie das Original-Projekt *Digital*, aus dem Geometrie und Dateiformat übernommen sind.
+GPL-3.0, wie das Original-Projekt *Digital*, aus dem Geometrie und Dateiformat übernommen sind. Die Dateien in `lib/74xx` stammen unverändert aus [Digital](https://github.com/hneemann/Digital) von Helmut Neemann (GPL-3.0, siehe `lib/LICENSE-Digital.txt`).

@@ -1,4 +1,4 @@
-import { DEF, DEFS, CATEGORIES, attrsOf, settings, mask, formatValue, subInterface } from './components.js';
+import { DEF, DEFS, CATEGORIES, attrsOf, settings, mask, formatValue, subInterface, pinsWorld } from './components.js';
 import { Circuit } from './circuit.js';
 import { Sim } from './sim.js';
 import { Editor, drawPreview } from './editor.js';
@@ -11,13 +11,14 @@ import { parseEquations, buildCircuit, toHTML, toText, termsToAST, OV } from './
 import { Recorder } from './graph.js';
 import { runTest } from './testcase.js';
 import { writeZip, readZip } from './zip.js';
-import { library, touchLibrary, usesCircuit, dependencies } from './lib.js';
+import { library, sysLib, touchLibrary, usesCircuit, dependencies, getCircuit, isSystem, libIndex, loadMissing } from './lib.js';
 import { EXAMPLES } from './examples.js';
+import { makeModule as moduleFromSelection, route as routeWire } from './module.js';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const STORE = 'digitalweb.v1';
-const VERSION = 'Version 7 · 26.11.2026';
+const VERSION = 'Version 10 · 26.11.2026';
 
 // ---------- Zustand ----------
 // Ein Projekt besteht aus mehreren Schaltungen (library). Jede kann in den anderen als Baustein dienen.
@@ -62,7 +63,7 @@ function redo() { if (hIdx < history.length - 1) { hIdx++; loadSnapshot(history[
 function autosave() {
   try {
     const docs = Object.fromEntries([...library].map(([n, c]) => [n, c.toJSON()]));
-    localStorage.setItem(STORE, JSON.stringify({ v: 2, current, docs }));
+    localStorage.setItem(STORE, JSON.stringify({ v: 3, current, docs }));
   } catch { }
 }
 const cleanName = n => String(n || '').replace(/\.dig$/i, '').replace(/[\\/:*?"<>|]/g, '').trim();
@@ -148,6 +149,50 @@ function buildPalette() {
   section('Eigene Bausteine', subs.map(n => ({ type: 'Sub', sub: n, name: n })),
     subs.length ? '' : '<p class="pal-hint">Jede andere Schaltung deines Projekts lässt sich hier als Baustein einsetzen. Tippe oben auf den Schaltungsnamen, um eine weitere anzulegen.</p>');
   for (const cat of CATEGORIES) section(cat, DEFS.filter(d => d.cat === cat));
+  // 74xx-Bibliothek (aus Digital)
+  const h = document.createElement('h3'); h.textContent = '74xx-Bibliothek'; pal.appendChild(h);
+  const b = document.createElement('button'); b.className = 'btn lib-btn'; b.innerHTML = '<b>74xx-Chips</b><small>über 100 Bausteine aus Digital</small>';
+  b.onclick = showChipLibrary; pal.appendChild(b);
+}
+
+// ---------- 74xx-Bibliothek ----------
+const parseLib = text => parseDig(text).circuit;
+async function ensureChips(circuits) {
+  const r = await loadMissing(circuits, parseLib);
+  if (r.loaded.length) { editor.invalidate(); renderProps(); }
+  return r;
+}
+const GROUPS = { basic: 'Gatter', arithmetic: 'Arithmetik & Vergleich', flipflops: 'Flipflops & Latches', counter: 'Zähler', 'shift register': 'Schieberegister', plexers: 'Multiplexer & Decoder', driver: 'Treiber', display: 'Anzeige-Decoder', memory: 'Speicher' };
+async function showChipLibrary() {
+  const idx = (await libIndex()).filter(e => !e.internal);
+  const render = q => {
+    q = q.trim().toLowerCase();
+    const hit = e => !q || e.name.toLowerCase().includes(q) || e.desc.toLowerCase().includes(q);
+    const groups = [...new Set(idx.map(e => e.group))];
+    return groups.map(g => {
+      const items = idx.filter(e => e.group === g && hit(e));
+      if (!items.length) return '';
+      return `<h3>${esc(GROUPS[g] || g)}</h3><div class="chip-list">${items.map(e => `<button class="chip-item" data-chip="${esc(e.name)}"><b>${esc(e.name)}</b><small>${esc(e.desc)}</small></button>`).join('')}</div>`;
+    }).join('') || '<p class="muted">Nichts gefunden.</p>';
+  };
+  openDialog(`<div class="dialog"><h2>74xx-Bibliothek <button class="close">✕</button></h2>
+    <div class="field"><input type="text" id="chipSearch" placeholder="Suchen, z. B. 74595 oder Zähler" autocomplete="off" spellcheck="false"></div>
+    <div id="chipResults">${render('')}</div>
+    <p class="muted" style="margin-top:14px">Die Chips stammen aus der Bibliothek von <i>Digital</i> (H. Neemann, GPL-3.0) und werden als DIL-Gehäuse mit Pin-Nummern dargestellt. VCC und GND müssen nicht angeschlossen werden.</p></div>`, true);
+  $('#chipSearch').oninput = e => { $('#chipResults').innerHTML = render(e.target.value); };
+  $('#sheet').onclick = async e => {
+    const b = e.target.closest('[data-chip]'); if (!b) return;
+    const name = b.dataset.chip;
+    b.disabled = true;
+    const tmp = { comps: [{ type: 'Sub', sub: name }] };
+    const r = await ensureChips([tmp]);
+    if (!getCircuit(name)) { toast(`„${name}“ konnte nicht geladen werden.`, true); b.disabled = false; return; }
+    closeDialog();
+    const panelOpen = $('#props').classList.contains('open');
+    const pw = panelOpen ? 0 : Math.min(272, editor.w * 0.3);
+    place('Sub', editor.toWorld((editor.w - pw) / 2, editor.h / 3), name);
+    if (r.notFound.length) toast('Fehlende Teile: ' + r.notFound.join(', '), true);
+  };
 }
 function setupTileDrag(tile, type, sub) {
   let start = null, ghost = null;
@@ -186,7 +231,7 @@ function setupTileDrag(tile, type, sub) {
 function place(type, p, sub) {
   let x = Math.round(p.x / 20) * 20, y = Math.round(p.y / 20) * 20;
   while (circuit.comps.some(c => c.x === x && c.y === y)) { x += 40; y += 40; }
-  const c = circuit.addComp(type, x, y, {});
+  const c = circuit.addComp(type, x, y, JSON.parse(JSON.stringify(DEF[type].initial || {})));
   if (sub) c.sub = sub;
   editor.sel.clear(); editor.sel.add(c);
   commit(); renderProps();
@@ -203,9 +248,16 @@ function renderProps() {
   if (sel.length > 1 || !sel[0].type) {
     const nc = sel.filter(x => x.type).length, nw = sel.length - nc;
     inner.innerHTML = `<h2>${sel.length > 1 ? 'Auswahl' : 'Leitung'}</h2><div class="sub">${nc ? nc + ' Bauteil(e)' : ''}${nc && nw ? ', ' : ''}${nw ? nw + ' Leitung(en)' : ''}</div>`;
+    if (nc) {
+      const b = document.createElement('button'); b.className = 'btn primary wide'; b.textContent = 'Als Baustein zusammenfassen';
+      b.onclick = makeModule;
+      inner.appendChild(b);
+      inner.insertAdjacentHTML('beforeend', '<div class="hint" style="margin-top:6px">Die Auswahl wird in einen eigenen Baustein verschoben. Leitungen nach außen werden zu seinen Ein- und Ausgängen.</div>');
+    }
   } else {
     const c = sel[0], def = DEF[c.type], a = attrsOf(c);
-    const subtitle = c.type === 'Unknown' ? 'Wird noch nicht unterstützt – bleibt beim Speichern erhalten.' : c.type === 'Sub' ? 'Baustein „' + esc(c.sub) + '“' : def.cat;
+    const subtitle = c.type === 'Unknown' ? 'Wird noch nicht unterstützt – bleibt beim Speichern erhalten.'
+      : c.type === 'Sub' ? (isSystem(c.sub) ? esc(getCircuit(c.sub)?.top?.Description || '74xx-Bibliothek') : 'Baustein „' + esc(c.sub) + '“') : def.cat;
     inner.innerHTML = `<h2>${c.type === 'Sub' ? esc(c.sub) : def.name}</h2><div class="sub">${subtitle}</div>`;
     for (const p of def.props) inner.appendChild(field(c, p, a));
     if (c.type === 'Sub' && library.has(c.sub)) {
@@ -315,6 +367,94 @@ function duplicateSel() {
     else { const w = circuit.addWire(it.x1 + 40, it.y1 + 40, it.x2 + 40, it.y2 + 40); if (w) ns.add(w); }
   }
   editor.sel = ns; commit(); renderProps();
+}
+
+// ---------- Bausteine (Module) ----------
+function makeModule() {
+  const sel = new Set(editor.sel);
+  inputDialog('Name des neuen Bausteins', uniqueName('Baustein'), 'Baustein erstellen', v => {
+    const name = cleanName(v);
+    if (!name) { toast('Bitte einen Namen eingeben.', true); return false; }
+    if (getCircuit(name)) { toast(`„${name}“ gibt es schon.`, true); return false; }
+    try {
+      const r = moduleFromSelection(circuit, sel, name);
+      editor.sel.clear(); editor.sel.add(r.instance);
+      commit(); buildPalette(); renderProps();
+      toast(`Baustein „${name}“ erstellt: Eingänge ${r.inputs.join(', ') || '–'}, Ausgänge ${r.outputs.join(', ') || '–'}.`, false, 5000);
+    } catch (e) { toast(e.message, true, 4000); return false; }
+  });
+}
+
+// Ändert sich die Lage der Anschlüsse eines Bausteins, ziehen Leitungen und angedockte Tunnel/Ein-Ausgänge mit
+const ONE_PIN = new Set(['Tunnel', 'In', 'Out', 'Clock', 'Const', 'Ground', 'VDD', 'Probe', 'LED', 'Button', 'PullUp', 'PullDown']);
+function changeModule(name, mutate) {
+  const snap = [];
+  for (const circ of library.values()) for (const inst of circ.comps.filter(k => k.type === 'Sub' && k.sub === name)) snap.push({ circ, inst, pins: pinsWorld(inst) });
+  mutate(); touchLibrary();
+  for (const { circ, inst, pins } of snap) {
+    const np = pinsWorld(inst);
+    const moves = pins.map((op, i) => ({ op, q: np[i] })).filter(m => m.q && (m.q.x !== m.op.x || m.q.y !== m.op.y));
+    const movedComps = new Set(), movedEnds = new Set();
+    for (const { op, q } of moves) {
+      for (const w of [...circ.wires]) for (const e of [1, 2]) {
+        const k = w.id + ':' + e;
+        if (movedEnds.has(k) || w['x' + e] !== op.x || w['y' + e] !== op.y) continue;
+        w['x' + e] = q.x; w['y' + e] = q.y; movedEnds.add(k);
+        // schräg geworden? -> kollisionsfrei rechtwinklig neu führen (sonst schräg lassen)
+        const f = e === 1 ? 2 : 1;
+        if (w['x' + f] !== q.x && w['y' + f] !== q.y) {
+          const a = [w['x' + f], w['y' + f]];
+          circ.wires = circ.wires.filter(z => z !== w);
+          const path = routeWire(circ, a, [q.x, q.y], new Set([inst]));
+          if (path) for (let i = 1; i < path.length; i++) { const nw = circ.addWire(path[i - 1][0], path[i - 1][1], path[i][0], path[i][1]); if (nw) { movedEnds.add(nw.id + ':1'); movedEnds.add(nw.id + ':2'); } }
+          else circ.wires.push(w);
+        }
+      }
+      for (const k of circ.comps) {
+        if (k === inst || movedComps.has(k) || !ONE_PIN.has(k.type)) continue;
+        const kp = pinsWorld(k)[0];
+        if (kp && kp.x === op.x && kp.y === op.y) { k.x += q.x - op.x; k.y += q.y - op.y; movedComps.add(k); }
+      }
+    }
+    circ.cleanup();
+  }
+}
+
+function showModuleSettings(name = current) {
+  const c = library.get(name); if (!c) return;
+  const top = c.top || (c.top = {});
+  const ports = c.comps.filter(k => ['In', 'Clock', 'Out'].includes(k.type));
+  const render = () => {
+    const dil = top.shapeType === 'DIL';
+    const rows = ports.map((k, i) => `<tr><td><b>${esc(attrsOf(k).Label || '?')}</b></td><td>${k.type === 'Out' ? 'Ausgang' : 'Eingang'}</td>
+      ${dil ? `<td><input type="text" inputmode="numeric" class="pin-in" data-i="${i}" value="${esc(attrsOf(k).pinNumber || '')}" placeholder="auto"></td>` : ''}</tr>`).join('');
+    openDialog(`<div class="dialog"><h2>„${esc(name)}“ als Baustein <button class="close">✕</button></h2>
+      <div class="mod-grid"><div>
+      <div class="field"><label>Beschreibung</label><input type="text" id="mDesc" value="${esc(top.Description || '')}" placeholder="z. B. Halbaddierer"></div>
+      <div class="field"><label>Form</label><div class="chips"><button class="chip ${dil ? '' : 'on'}" data-shape="DEFAULT">Rechteck</button><button class="chip ${dil ? 'on' : ''}" data-shape="DIL">DIL-Chip (wie 74xx)</button></div></div>
+      <div class="field"><label>Breite</label><div class="stepper"><button data-w="-1">−</button><input type="text" value="${top.Width ?? 3}" readonly><button data-w="1">+</button></div></div>
+      ${dil ? `<div class="field"><label>Anzahl Pins</label><div class="stepper"><button data-pc="-2">−</button><input type="text" value="${top.pinCount || 'auto'}" readonly><button data-pc="2">+</button></div></div>` : ''}
+      <div class="field"><label>Anschlüsse</label>
+        ${ports.length ? `<table class="tt ports"><thead><tr><th>Name</th><th>Art</th>${dil ? '<th>Pin</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>` : '<p class="muted">Lege in der Schaltung Ein- und Ausgänge mit Beschriftung an – sie werden zu den Anschlüssen.</p>'}
+        <div class="hint">Die Reihenfolge entspricht der Reihenfolge, in der die Ein-/Ausgänge angelegt wurden.</div></div>
+      </div><div class="mod-preview"><label>Vorschau</label><canvas id="mPrev"></canvas></div></div>
+      <div class="row"><button class="btn primary" id="mDone">Fertig</button></div></div>`, true);
+    requestAnimationFrame(() => { const cv = $('#mPrev'); if (cv) drawPreview(cv, 'Sub', {}, name); });
+    const sh = $('#sheet');
+    const changed = fn => { changeModule(name, fn); autosave(); editor.invalidate(); refreshPanel(); render(); };
+    $('#mDesc').onchange = e => { top.Description = e.target.value; autosave(); };
+    sh.querySelectorAll('[data-shape]').forEach(b => (b.onclick = () => changed(() => { top.shapeType = b.dataset.shape; })));
+    sh.querySelectorAll('[data-w]').forEach(b => (b.onclick = () => changed(() => { top.Width = Math.max(2, Math.min(10, (top.Width ?? 3) + +b.dataset.w)); })));
+    sh.querySelectorAll('[data-pc]').forEach(b => (b.onclick = () => changed(() => { const n = (top.pinCount || 0) + +b.dataset.pc; top.pinCount = n < 4 ? 0 : Math.min(48, n); })));
+    sh.querySelectorAll('.pin-in').forEach(inp => (inp.onchange = () => {
+      const k = ports[+inp.dataset.i]; const v = inp.value.trim();
+      changed(() => { k.attrs.pinNumber = /^\d+$/.test(v) ? v : ''; });
+      const nums = ports.map(p => attrsOf(p).pinNumber).filter(Boolean);
+      if (new Set(nums).size !== nums.length) toast('Eine Pin-Nummer ist doppelt vergeben.', true);
+    }));
+    $('#mDone').onclick = () => { closeDialog(); if (name === current) commit(); buildPalette(); };
+  };
+  render();
 }
 
 // ---------- Simulation ----------
@@ -482,7 +622,7 @@ function showDocs() {
       <div class="doc-name"><b>${esc(n)}</b>${n === current ? ' <span class="badge">geöffnet</span>' : ''}
         <small>${library.get(n).comps.length} Bauteile${users.length ? ' · Baustein in: ' + users.map(esc).join(', ') : ''}</small></div>
       <div class="doc-btns">${n !== current ? `<button class="btn" data-open="${esc(n)}">Öffnen</button>` : ''}
-        <button class="btn" data-ren="${esc(n)}">Umbenennen</button><button class="btn red" data-del="${esc(n)}">Löschen</button></div></div>`;
+        <button class="btn" data-look="${esc(n)}">Aussehen</button><button class="btn" data-ren="${esc(n)}">Umbenennen</button><button class="btn red" data-del="${esc(n)}">Löschen</button></div></div>`;
   }).join('');
   openDialog(`<div class="dialog"><h2>Schaltungen im Projekt <button class="close">✕</button></h2>
     <p class="muted">Jede Schaltung kann in den anderen als <b>Baustein</b> eingesetzt werden (Palette links, „Eigene Bausteine“). Die Anschlüsse des Bausteins sind die beschrifteten Ein- und Ausgänge.</p>
@@ -492,6 +632,7 @@ function showDocs() {
     const b = e.target.closest('button'); if (!b) return;
     if (b.id === 'docNew') { closeDialog(); addDoc('Schaltung', new Circuit()); toast('Neue Schaltung angelegt – die anderen findest du jetzt links als Baustein.'); }
     if (b.dataset.open) { closeDialog(); setCurrent(b.dataset.open); }
+    if (b.dataset.look) showModuleSettings(b.dataset.look);
     if (b.dataset.ren) { const old = b.dataset.ren; inputDialog('Schaltung umbenennen', old, 'Umbenennen', v => renameDoc(old, v)); }
     if (b.dataset.del) {
       const n = b.dataset.del, users = usersOf(n);
@@ -516,6 +657,7 @@ function showMenu() {
     </div>
     <h3>Projekt <span class="h3-sub">„${esc(current)}“ · ${library.size} Schaltung${library.size > 1 ? 'en' : ''}</span></h3><div class="menu-list">
       ${item('new', '＋', 'Neue Schaltung', 'Im Projekt – nutzbar als Baustein')}
+      ${item('modlook', '⬚', 'Aussehen als Baustein', 'Rechteck oder DIL-Chip, Pins, Breite')}
       ${item('docs', '🗂', 'Schaltungen verwalten', 'Wechseln, umbenennen, löschen')}
       ${item('newproj', '🗑', 'Neues Projekt', 'Alle Schaltungen schließen')}
     </div>
@@ -538,6 +680,7 @@ function showMenu() {
     switch (b.dataset.a) {
       case 'new': closeDialog(); addDoc('Schaltung', new Circuit()); break;
       case 'docs': showDocs(); break;
+      case 'modlook': showModuleSettings(); break;
       case 'open': closeDialog(); $('#fileInput').click(); break;
       case 'save': showSave(); break;
       case 'formula': showFormula(); break;
@@ -631,8 +774,11 @@ $('#fileInput').addEventListener('change', async e => {
     touchLibrary();
     const names = Object.keys(loaded);
     const main = names.find(n => !names.some(m => m !== n && loaded[m].comps.some(k => k.type === 'Sub' && k.sub === n))) || names[0];
+    // Bausteine aus der 74xx-Bibliothek nachladen
+    await ensureChips(Object.values(loaded));
     const missing = new Set();
-    for (const c of Object.values(loaded)) for (const k of c.comps) if (k.type === 'Sub' && !library.has(k.sub)) missing.add(k.sub);
+    for (const c of Object.values(loaded)) for (const k of c.comps) if (k.type === 'Sub' && !getCircuit(k.sub)) missing.add(k.sub);
+    for (const c of sysLib.values()) for (const k of c.comps) if (k.type === 'Unknown') unknown.add(k.attrs.elementName);
     setCurrent(main);
     if (missing.size) toast('Es fehlen Bausteine: ' + [...missing].join(', ') + ' – bitte die .dig-Dateien mit auswählen.', true, 7000);
     else if (unknown.size) toast('Noch nicht unterstützt: ' + [...unknown].join(', '), true, 6000);
@@ -940,7 +1086,7 @@ function showHelp() {
     <li><b>Ansicht:</b> mit einem Finger auf freier Fläche verschieben, mit zwei Fingern zoomen.</li>
     <li><b>Simulation:</b> „Start“ tippen. Schalter antippen, Taster gedrückt halten. Hellgrün = 1, dunkelgrün = 0, blau = nicht verbunden, rot = Fehler. „Messgraph“ zeigt den zeitlichen Verlauf.</li>
     <li><b>Wahrheitstabelle:</b> „Tabelle“ zeigt alle Eingangskombinationen, die DMF und das KV-Diagramm. Beschriftete Gatter erscheinen als Zwischenschritte.</li>
-    <li><b>Bausteine:</b> Tippe oben auf den Schaltungsnamen, um weitere Schaltungen im Projekt anzulegen. Jede davon kann links unter „Eigene Bausteine“ in andere Schaltungen eingesetzt werden. Ihre Anschlüsse sind die beschrifteten Ein- und Ausgänge.</li>
+    <li><b>Bausteine (Module):</b> Jede Schaltung im Projekt kann links unter „Eigene Bausteine“ in andere Schaltungen eingesetzt werden; ihre Anschlüsse sind die beschrifteten Ein- und Ausgänge. Am schnellsten geht es so: Teil der Schaltung mit „Auswahl“ markieren → rechts „Als Baustein zusammenfassen“. Unter „Menü → Aussehen als Baustein“ wählst du Rechteck oder DIL-Chip und die Pin-Nummern.</li>
     <li><b>Testfälle:</b> Bauteil „Testfall“ (Sonstiges) einfügen, Testdaten eintragen, „Test“ tippen.</li>
     <li><b>Speichern:</b> Die Arbeit wird automatisch im Browser gesichert. Über „Datei → Speichern“ entstehen .dig-Dateien, die auch das Desktop-Programm <i>Digital</i> öffnet.</li>
   </ul>
@@ -999,13 +1145,46 @@ window.addEventListener('keydown', e => {
   else if (e.key === ' ') { e.preventDefault(); startSim(); }
 });
 
+// Speicherstände bis Version 7 nutzten andere Standardwerte – fehlende Werte ergänzen
+function migrateV2(j) {
+  const OLD = {
+    Clock: { Label: 'C', runRealTime: true }, Tunnel: { NetName: 'T' }, Splitter: { 'Input Splitting': '4', 'Output Splitting': '1,1,1,1' },
+    Counter: { Bits: 4 }, Register: { Bits: 8 }, Text: { Description: 'Text' }, Testcase: { Testdata: 'A B Y\n0 0 0\n0 1 0\n1 0 0\n1 1 1' },
+  };
+  for (const k of j.comps || []) {
+    const o = OLD[k.type]; if (o) k.attrs = { ...o, ...k.attrs };
+    // 7-Segment-Hex: Anschlüsse liegen jetzt wie in Digital 20 weiter rechts -> Anzeige verschieben
+    if (k.type === 'Seven-Seg-Hex') { const [dx, dy] = [[-20, 0], [0, 20], [20, 0], [0, -20]][(k.rot || 0) & 3]; k.x += dx; k.y += dy; }
+    if (k.type === 'Button' && k.attrs?.ActiveLow != null) { k.attrs.activeLow = k.attrs.ActiveLow; delete k.attrs.ActiveLow; }
+  }
+  return j;
+}
+
+// Komparator: Ausgänge waren bis Version 7 in der Reihenfolge =, >, < – jetzt wie in Digital >, =, <
+function migrateComparators(c) {
+  for (const k of c.comps.filter(k => k.type === 'Comparator')) {
+    const outs = pinsWorld(k).filter(p => p.out);   // neue Lage: [>, =, <]
+    const A = outs[0], B = outs[1];                 // alte Bedeutung: A war "=", B war ">"
+    for (const w of c.wires) for (const e of [1, 2]) {
+      if (w['x' + e] === A.x && w['y' + e] === A.y) { w['x' + e] = B.x; w['y' + e] = B.y; w._sw = 1; }
+      else if (w['x' + e] === B.x && w['y' + e] === B.y && !w._sw) { w['x' + e] = A.x; w['y' + e] = A.y; }
+    }
+    for (const w of c.wires) delete w._sw;
+  }
+}
+
 // ---------- Start ----------
 (function restore() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
-    if (saved?.v === 2 && saved.docs) {
-      for (const [n, j] of Object.entries(saved.docs)) library.set(n, Circuit.fromJSON(j));
+    if ((saved?.v === 2 || saved?.v === 3) && saved.docs) {
+      for (const [n, j] of Object.entries(saved.docs)) {
+        const c = Circuit.fromJSON(saved.v === 2 ? migrateV2(j) : j);
+        if (saved.v === 2) migrateComparators(c);
+        library.set(n, c);
+      }
       touchLibrary();
+      ensureChips([...library.values()]).then(() => { buildPalette(); editor.invalidate(); refreshPanel(); });
       if (library.size) return setCurrent(library.has(saved.current) ? saved.current : library.keys().next().value);
     } else if (saved?.circuit) {
       library.set(cleanName(saved.name) || 'Schaltung', Circuit.fromJSON(saved.circuit)); touchLibrary();
@@ -1019,4 +1198,4 @@ window.addEventListener('keydown', e => {
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 
 // zum Testen
-window.__app = { showTTEditor, showStateAnalysis, openFsm, get fsmEditor() { return fsmEditor; }, editor, get circuit() { return circuit; }, get current() { return current; }, library, setCurrent, addDoc, loadExample, parseDig, writeDig, startSim, stopSim, Circuit, recorder, runAllTests, showTable, showKV, showFormula, toggleGraph };
+window.__app = { showModuleSettings, getLib: () => import('./lib.js'), showTTEditor, showStateAnalysis, openFsm, get fsmEditor() { return fsmEditor; }, editor, get circuit() { return circuit; }, get current() { return current; }, library, setCurrent, addDoc, loadExample, parseDig, writeDig, startSim, stopSim, Circuit, recorder, runAllTests, showTable, showKV, showFormula, toggleGraph };

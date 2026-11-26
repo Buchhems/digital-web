@@ -1,6 +1,6 @@
 // Datenmodell der Schaltung und Netzbildung
 import { DEF, pinsWorld, attrsOf } from './components.js';
-import { library } from './lib.js';
+import { getCircuit } from './lib.js';
 
 let nextId = 1;
 export const newId = () => nextId++;
@@ -27,6 +27,7 @@ export class Circuit {
       comps: this.comps.map(({ type, x, y, rot, attrs, raw, sub }) => ({ type, x, y, rot, attrs, ...(raw ? { raw } : {}), ...(sub ? { sub } : {}) })),
       wires: this.wires.map(w => [w.x1, w.y1, w.x2, w.y2]),
       digAttributes: this.digAttributes,
+      ...(this.top ? { top: this.top } : {}),
     };
   }
   static fromJSON(j) {
@@ -39,6 +40,7 @@ export class Circuit {
     }
     for (const w of j.wires || []) c.addWire(...w);
     c.digAttributes = j.digAttributes || null;
+    if (j.top) c.top = j.top;
     return c;
   }
   // Drähte aufräumen: Länge 0 und Duplikate entfernen, kollineare Stücke zusammenfassen
@@ -125,11 +127,11 @@ export function buildNets(circuit) {
     for (const v of circ.wires) for (const [x, y] of [[v.x1, v.y1], [v.x2, v.y2]])
       for (const w of circ.wires) if (w !== v && onSegment(x, y, w)) uf.union(pk(x, y), wk(w));
     for (const c of circ.comps) {
-      if (c.type === 'Text' || c.type === 'Unknown' || c.type === 'Testcase') continue;
+      if (c.type === 'Text' || c.type === 'Unknown' || c.type === 'Testcase' || c.type === 'PowerSupply') continue;
       if (depth > 0 && (c.type === 'In' || c.type === 'Out' || c.type === 'Clock')) continue; // werden zu Anschlüssen
       const pins = pinsWorld(c);
       if (c.type === 'Sub') {
-        const sub = library.get(c.sub);
+        const sub = getCircuit(c.sub);
         if (!sub) { problems.push(`Baustein „${c.sub}“ fehlt.`); continue; }
         if (depth > 16) { problems.push(`Baustein „${c.sub}“ enthält sich selbst.`); continue; }
         const subPre = pre + c.id + '/';

@@ -2,7 +2,7 @@
 // dem Desktop-Programm "Digital" von H. Neemann, damit .dig-Dateien
 // austauschbar sind. Symbole: DIN EN 60617 (IEC) als Standard, IEEE optional.
 
-import { library, libVersion } from './lib.js';
+import { getCircuit, libVersion } from './lib.js';
 
 export const S = 20;
 export const mask = b => (b >= 32 ? 0xFFFFFFFF : 2 ** b - 1);
@@ -14,6 +14,7 @@ export const settings = { shapes: 'iec' };
 // ---------- Eigenschaften ----------
 const P = {
   label: { key: 'Label', label: 'Beschriftung', type: 'text' },
+  pinNumber: { key: 'pinNumber', label: 'Pin-Nummer (im Baustein)', type: 'text', hint: 'Nur für Bausteine im DIL-Gehäuse: an welchem Pin dieser Anschluss liegt.' },
   gateLabel: { key: 'Label', label: 'Beschriftung', type: 'text', hint: 'Beschriftete Gatter erscheinen in der Wertetabelle als Zwischenschritt.' },
   bits: { key: 'Bits', label: 'Datenbits', type: 'int', min: 1, max: 32 },
   inputs: { key: 'Inputs', label: 'Anzahl Eingänge', type: 'int', min: 2, max: 16 },
@@ -31,7 +32,7 @@ const P = {
   desc: { key: 'Description', label: 'Text', type: 'textarea' },
   inSplit: { key: 'Input Splitting', label: 'Eingänge (Bits)', type: 'text', hint: 'z. B. 4 oder 1,1,1,1 oder 4*1' },
   outSplit: { key: 'Output Splitting', label: 'Ausgänge (Bits)', type: 'text', hint: 'z. B. 1,1,1,1' },
-  activeLow: { key: 'ActiveLow', label: 'Low-aktiv', type: 'bool' },
+  activeLow: { key: 'activeLow', label: 'Low-aktiv', type: 'bool' },
   withEnable: { key: 'withEnable', label: 'Mit T-Eingang', type: 'bool' },
 };
 
@@ -83,20 +84,25 @@ function drawGenericBox(r, g, a, { title, labels = true, clockPins = [] } = {}) 
   if (a.Label) r.text(W / 2, -14, a.Label, 0, -1, 13, 'label');
 }
 
+// Indizes der Eingänge, die laut inverterConfig negiert sind
+const invSet = (a, names) => new Set(names.map((n, i) => ((a.inverterConfig || []).includes(n) ? i : -1)).filter(i => i >= 0));
+// Negation mit der Bitbreite des jeweiligen Eingangs
+const applyInv = (ins, g) => ins.map((x, i) => (g.pins[i]?.inv ? (x == null ? null : (~x & mask(g.pins[i].bits || 1)) >>> 0) : x));
+
 // ---------- Gatter ----------
 function gate(type, name, sym, fn, invOut, ieee) {
   const isNot = type === 'Not';
   return {
     type, name, cat: 'Logikgatter',
-    defaults: isNot ? { Bits: 1, Label: '' } : { Inputs: 2, Bits: 1, wideShape: false, Label: '', inverterConfig: [] },
-    props: isNot ? [P.gateLabel, P.bits] : [P.gateLabel, P.inputs, P.bits, P.wide, P.invert],
+    defaults: isNot ? { Bits: 1, Label: '', wideShape: false } : { Inputs: 2, Bits: 1, wideShape: false, Label: '', inverterConfig: [] },
+    props: isNot ? [P.gateLabel, P.bits, P.wide] : [P.gateLabel, P.inputs, P.bits, P.wide, P.invert],
     geo(a) {
       const n = isNot ? 1 : a.Inputs;
       const inv = new Set((a.inverterConfig || []).map(s => parseInt(String(s).replace('In_', '')) - 1).filter(i => i >= 0 && i < n));
       return generic({
         ins: range(n).map(i => ({ n: isNot ? 'in' : 'In_' + (i + 1), bits: a.Bits })),
         outs: [{ n: 'out', bits: a.Bits }],
-        width: isNot ? 1 : (a.wideShape ? 4 : 3), invOut, invIn: inv,
+        width: (isNot ? 1 : 3) + (a.wideShape ? 1 : 0), invOut, invIn: inv,
       });
     },
     eval(ins, st, a, g) {
@@ -155,8 +161,8 @@ const OS = 15; // Größe der Ein-/Ausgabebox
 
 const In = {
   type: 'In', name: 'Eingang', cat: 'Ein-/Ausgabe',
-  defaults: { Bits: 1, Label: '', InDefault: 0, intFormat: 'def' },
-  props: [P.label, P.bits, P.inDefault, P.format],
+  defaults: { Bits: 1, Label: '', InDefault: 0, intFormat: 'def', pinNumber: '' },
+  props: [P.label, P.bits, P.inDefault, P.format, P.pinNumber],
   geo(a) { return { pins: [{ n: 'out', bits: a.Bits, x: 0, y: 0, out: true }], box: { x0: -2 * OS - 2, y0: -OS, x1: 0, y1: OS } }; },
   init(st, a) { st.value = (a.InDefault || 0) & mask(a.Bits); },
   eval(ins, st) { return [st.value]; },
@@ -179,8 +185,8 @@ const In = {
 
 const Out = {
   type: 'Out', name: 'Ausgang', cat: 'Ein-/Ausgabe',
-  defaults: { Bits: 1, Label: '', intFormat: 'def' },
-  props: [P.label, P.bits, P.format],
+  defaults: { Bits: 1, Label: '', intFormat: 'def', pinNumber: '' },
+  props: [P.label, P.bits, P.format, P.pinNumber],
   geo(a) { return { pins: [{ n: 'in', bits: a.Bits, x: 0, y: 0, out: false }], box: { x0: 0, y0: -OS, x1: 2 * OS + 2, y1: OS } }; },
   eval() { return []; },
   draw(r, c, a, g, st) {
@@ -215,8 +221,9 @@ const LED = {
 
 const Clock = {
   type: 'Clock', name: 'Takt', cat: 'Ein-/Ausgabe',
-  defaults: { Label: 'C', Frequency: 1, runRealTime: true },
-  props: [P.label, P.freq, P.realtime],
+  defaults: { Label: '', Frequency: 1, runRealTime: false, pinNumber: '' },
+  initial: { Label: 'C', runRealTime: true },
+  props: [P.label, P.freq, P.realtime, P.pinNumber],
   geo() { return { pins: [{ n: 'C', bits: 1, x: 0, y: 0, out: true }], box: { x0: -2 * OS - 2, y0: -OS, x1: 0, y1: OS } }; },
   init(st) { st.value = 0; },
   eval(ins, st) { return [st.value]; },
@@ -232,11 +239,11 @@ const Clock = {
 
 const Button = {
   type: 'Button', name: 'Taster', cat: 'Ein-/Ausgabe',
-  defaults: { Label: '', ActiveLow: false },
+  defaults: { Label: '', activeLow: false },
   props: [P.label, P.activeLow],
   geo() { return { pins: [{ n: 'out', bits: 1, x: 0, y: 0, out: true }], box: { x0: -2 * OS - 6, y0: -OS - 4, x1: 0, y1: OS + 4 } }; },
   init(st, a) { st.pressed = false; },
-  eval(ins, st, a) { return [(st.pressed ? 1 : 0) ^ (a.ActiveLow ? 1 : 0)]; },
+  eval(ins, st, a) { return [(st.pressed ? 1 : 0) ^ (a.activeLow ? 1 : 0)]; },
   interactive: true,
   press(st) { st.pressed = true; },
   release(st) { st.pressed = false; },
@@ -297,34 +304,55 @@ const SEG = [
 ];
 const HEX = [0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F, 0x77, 0x7C, 0x39, 0x5E, 0x79, 0x71];
 function drawSeven(r, a, segOn, dpOn) {
-  r.rect(-10, 1, 70, 139, true, '#1b1b1b');
+  // Größe wie in Digital: Skalierung um die rechte untere Ecke (70,139)
+  const sz = a.segSize ?? 2, k = (2 + sz) / 4;
+  const T = ([x, y]) => (sz === 2 ? [x, y] : [(x - 70) * k + 70, (y - 139) * k + 139]);
+  r.poly([[-10, 1], [70, 1], [70, 139], [-10, 139]].map(T), true, null, null, '#1b1b1b');
   const col = rgb(a.Color);
-  SEG.forEach((poly, i) => r.poly(poly, true, null, 0, segOn(i) ? col : '#3a3a3a'));
-  r.circle(62, 131, 4, dpOn ? col : '#3a3a3a', true, null);
+  SEG.forEach((poly, i) => r.poly(poly.map(T), true, null, 0, segOn(i) ? col : '#3a3a3a'));
+  const [dx, dy] = T([62, 131]);
+  r.circle(dx, dy, 4 * k, dpOn ? col : '#3a3a3a', true, null);
 }
+const sevenBox = a => { const sz = a.segSize ?? 2, k = (2 + sz) / 4; return { x0: Math.min(0, (-10 - 70) * k + 70), y0: Math.min(0, (1 - 139) * k + 139), x1: Math.max(a.commonCathode ? 80 : 60, 70), y1: 140 }; };
 const SevenSeg = {
   type: 'Seven-Seg', name: '7-Segment', cat: 'Ein-/Ausgabe',
-  defaults: { Color: { r: 255, g: 0, b: 0 }, Label: '' },
-  props: [P.color, P.label],
-  geo() {
+  defaults: { Color: { r: 255, g: 0, b: 0 }, Label: '', commonCathode: false, commonConnectionType: 'cathode', segSize: 2 },
+  props: [P.color, { key: 'commonCathode', label: 'Gemeinsamer Anschluss', type: 'bool' },
+    { key: 'commonConnectionType', label: 'Art des gemeinsamen Anschlusses', type: 'select', options: [['cathode', 'Kathode (CC)'], ['anode', 'Anode (CA)']] },
+    { key: 'segSize', label: 'Größe', type: 'select', options: [[0, 'klein'], [1, 'mittel'], [2, 'groß']] }, P.label],
+  geo(a) {
     const n = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'dp'];
-    return { pins: n.map((nm, i) => ({ n: nm, bits: 1, x: (i % 4) * S, y: i < 4 ? 0 : 7 * S, out: false, vert: true })), box: { x0: -10, y0: 0, x1: 70, y1: 140 } };
+    const pins = n.map((nm, i) => ({ n: nm, bits: 1, x: (i % 4) * S, y: i < 4 ? 0 : 7 * S, out: false, vert: true }));
+    if (a.commonCathode) pins.push({ n: a.commonConnectionType === 'anode' ? 'ca' : 'cc', bits: 1, x: 4 * S, y: 7 * S, out: false, vert: true });
+    return { pins, box: sevenBox(a) };
   },
   eval() { return []; },
   draw(r, c, a, g, st) {
-    drawSeven(r, a, i => !st || v0(st.ins[i]) !== 0, !st || v0(st.ins[7]) !== 0);
+    const anode = a.commonConnectionType === 'anode';
+    // wie in Digital: Segment leuchtet, wenn Segment- und gemeinsamer Anschluss verschieden sind (passend zur Art)
+    const on = i => {
+      if (!st) return true;
+      const v = st.ins[i];
+      if (!a.commonCathode) return v != null && v !== 0;
+      const cc = st.ins[8];
+      if (v == null || cc == null) return false;
+      return (!!v !== !!cc) && (!!v !== anode);
+    };
+    drawSeven(r, a, on, on(7));
+    if (a.commonCathode) r.line(4 * S - 10, 7 * S - 1, 4 * S, 7 * S - 1);
     for (const p of g.pins) r.text(p.x, p.y + (p.y ? -4 : 4), p.n, 0, p.y ? -1 : 1, 9, 'pinlabel');
   },
 };
 const SevenSegHex = {
   type: 'Seven-Seg-Hex', name: '7-Seg. Hex', cat: 'Ein-/Ausgabe',
-  defaults: { Color: { r: 255, g: 0, b: 0 }, Label: '' },
-  props: [P.color, P.label],
-  geo() { return { pins: [{ n: 'd', bits: 4, x: S, y: 7 * S, out: false, vert: true }, { n: 'dp', bits: 1, x: 2 * S, y: 7 * S, out: false, vert: true }], box: { x0: -10, y0: 0, x1: 70, y1: 140 } }; },
+  defaults: { Color: { r: 255, g: 0, b: 0 }, Label: '', segSize: 2 },
+  props: [P.color, { key: 'segSize', label: 'Größe', type: 'select', options: [[0, 'klein'], [1, 'mittel'], [2, 'groß']] }, P.label],
+  // Anschlüsse wie in Digital: d bei (40,140), dp bei (60,140)
+  geo(a) { return { pins: [{ n: 'd', bits: 4, x: 2 * S, y: 7 * S, out: false, vert: true }, { n: 'dp', bits: 1, x: 3 * S, y: 7 * S, out: false, vert: true }], box: sevenBox(a) }; },
   eval() { return []; },
   draw(r, c, a, g, st) {
     const d = st ? v0(st.ins[0]) & 15 : 8;
-    drawSeven(r, a, i => (HEX[d] >> i) & 1, !st || v0(st.ins[1]) !== 0);
+    drawSeven(r, a, i => (st ? (st.ins[0] != null && (HEX[d] >> i) & 1) : true), !st || v0(st.ins[1]) !== 0);
     for (const p of g.pins) r.text(p.x, p.y - 4, p.n, 0, -1, 9, 'pinlabel');
   },
 };
@@ -332,7 +360,8 @@ const SevenSegHex = {
 // ---------- Leitungen ----------
 const Tunnel = {
   type: 'Tunnel', name: 'Tunnel', cat: 'Leitungen',
-  defaults: { NetName: 'T', Bits: 1 },
+  defaults: { NetName: '', Bits: 1 },
+  initial: { NetName: 'T' },
   props: [P.netName, P.bits],
   geo(a) { return { pins: [{ n: 'in', bits: a.Bits, x: 0, y: 0, out: false, tunnel: true }], box: { x0: 0, y0: -9, x1: 40, y1: 9 } }; },
   eval() { return []; },
@@ -342,39 +371,45 @@ const Tunnel = {
   },
 };
 
-export function parseSplit(s) {
-  const out = [];
+// Aufteilung wie in Digital: "4" (nächste 4 Bit), "4*2" (2× 4 Bit), "1-7" (Bits 1 bis 7)
+export function parseSplitPorts(s) {
+  const out = []; let pos = 0;
   for (let part of String(s || '1').split(',')) {
     part = part.trim();
     if (!part) continue;
     let m;
-    if ((m = part.match(/^(\d+)\s*\*\s*(\d+)$/))) for (let i = 0; i < +m[2]; i++) out.push(+m[1]);
-    else if ((m = part.match(/^(\d+)\s*-\s*(\d+)$/))) out.push(Math.abs(+m[2] - +m[1]) + 1);
-    else out.push(Math.max(1, parseInt(part) || 1));
+    if ((m = part.match(/^(\d+)\s*\*\s*(\d+)$/))) for (let i = 0; i < +m[2]; i++) { out.push({ bits: +m[1], lo: pos }); pos += +m[1]; }
+    else if ((m = part.match(/^(\d+)\s*-\s*(\d+)$/))) { const lo = Math.min(+m[1], +m[2]), bits = Math.abs(+m[2] - +m[1]) + 1; out.push({ bits, lo }); pos = lo + bits; }
+    else { const b = Math.max(1, parseInt(part) || 1); out.push({ bits: b, lo: pos }); pos += b; }
   }
-  return out.length ? out : [1];
+  return out.length ? out : [{ bits: 1, lo: 0 }];
 }
+export const parseSplit = s => parseSplitPorts(s).map(p => p.bits);
 const Splitter = {
   type: 'Splitter', name: 'Splitter', cat: 'Leitungen',
-  defaults: { 'Input Splitting': '4', 'Output Splitting': '1,1,1,1' },
+  defaults: { 'Input Splitting': '4,4', 'Output Splitting': '8' },
+  initial: { 'Input Splitting': '4', 'Output Splitting': '1,1,1,1' },
   props: [P.inSplit, P.outSplit],
   geo(a) {
-    const ins = parseSplit(a['Input Splitting']), outs = parseSplit(a['Output Splitting']);
+    const ins = parseSplitPorts(a['Input Splitting']), outs = parseSplitPorts(a['Output Splitting']);
     const sp = (a.splitterSpreading || 1) * S;
-    const label = arr => { let o = 0; return arr.map(b => { const t = b === 1 ? '' + o : o + '-' + (o + b - 1); o += b; return t; }); };
-    const li = label(ins), lo = label(outs);
+    const label = p => (p.bits === 1 ? '' + p.lo : p.lo + '-' + (p.lo + p.bits - 1));
     const pins = [
-      ...ins.map((b, i) => ({ n: li[i], bits: b, x: 0, y: i * sp, out: false })),
-      ...outs.map((b, i) => ({ n: lo[i], bits: b, x: S, y: i * sp, out: true })),
+      ...ins.map((p, i) => ({ n: label(p), bits: p.bits, x: 0, y: i * sp, out: false })),
+      ...outs.map((p, i) => ({ n: label(p), bits: p.bits, x: S, y: i * sp, out: true })),
     ];
     const len = (Math.max(ins.length, outs.length) - 1) * sp;
     return { pins, ins, outs, len, box: { x0: 0, y0: -8, x1: S, y1: len + 2 } };
   },
   eval(insV, st, a, g) {
-    let all = 0, o = 0;
-    g.ins.forEach((b, i) => { all += (v0(insV[i]) & mask(b)) * 2 ** o; o += b; });
-    o = 0;
-    return g.outs.map(b => { const v = Math.floor(all / 2 ** o) % 2 ** b; o += b; return v; });
+    // Eingangsbits sammeln; hochohmige (Z) Bereiche merken
+    const bit = [], z = [];
+    g.ins.forEach((p, i) => { for (let b = 0; b < p.bits; b++) { if (insV[i] == null) z[p.lo + b] = true; else bit[p.lo + b] = Math.floor(insV[i] / 2 ** b) & 1; } });
+    return g.outs.map(p => {
+      let v = 0;
+      for (let b = 0; b < p.bits; b++) { if (z[p.lo + b]) return null; v += (bit[p.lo + b] || 0) * 2 ** b; }
+      return v;
+    });
   },
   draw(r, c, a, g) {
     for (const p of g.pins) {
@@ -383,6 +418,117 @@ const Splitter = {
     }
     r.poly([[8, -2], [12, -2], [12, g.len + 2], [8, g.len + 2]], true, null, 0, '#222');
   },
+};
+
+// Tri-State-Treiber (Digital: Driver / DriverInvSel)
+function driver(type, name, invSel) {
+  return {
+    type, name, cat: 'Leitungen',
+    defaults: { Bits: 1, flipSelPos: false, invertDriverOutput: false },
+    props: [P.bits, { key: 'flipSelPos', label: 'Steuereingang unten', type: 'bool' }, { key: 'invertDriverOutput', label: 'Ausgang negiert', type: 'bool' }],
+    geo(a) {
+      const out = a.invertDriverOutput ? 2 * S : S;
+      return {
+        pins: [{ n: 'in', bits: a.Bits, x: -S, y: 0, out: false }, { n: 'sel', bits: 1, x: 0, y: a.flipSelPos ? S : -S, out: false, vert: true }, { n: 'out', bits: a.Bits, x: out, y: 0, out: true }],
+        box: { x0: -S, y0: -S, x1: out, y1: S },
+      };
+    },
+    eval(ins, st, a) {
+      const sel = ins[1] == null ? false : invSel ? !ins[1] : !!ins[1];
+      if (!sel || ins[0] == null) return [null];
+      return [a.invertDriverOutput ? (~ins[0] & mask(a.Bits)) >>> 0 : ins[0]];
+    },
+    draw(r, c, a) {
+      r.poly([[-S + 1, -12], [S - 1, 0], [-S + 1, 12]], true);
+      const y = a.flipSelPos ? 1 : -1;
+      if (invSel) { r.line(0, y * S, 0, y * 14); r.circle(0, y * 10, 4, null); } else r.line(0, y * S, 0, y * 7);
+      if (a.invertDriverOutput) r.invOut(S, 0, 2 * S);
+    },
+  };
+}
+const Delay = {
+  type: 'Delay', name: 'Verzögerung', cat: 'Leitungen',
+  defaults: { Bits: 1, delayTime: 1 }, props: [P.bits],
+  geo(a) { return { pins: [{ n: 'in', bits: a.Bits, x: 0, y: 0, out: false }, { n: 'out', bits: a.Bits, x: 2 * S, y: 0, out: true }], box: { x0: 0, y0: -10, x1: 2 * S, y1: 10 } }; },
+  eval(ins) { return [ins[0]]; },
+  draw(r) { r.rect(1, -10, 2 * S - 1, 10, true); r.line(10, 0, 30, 0, 1); r.line(10, -5, 10, 5, 1); r.line(30, -5, 30, 5, 1); },
+};
+// Pull-up / Pull-down: zieht eine offene (hochohmige) Leitung auf 1 bzw. 0
+function pull(type, name, up) {
+  return {
+    type, name, cat: 'Leitungen', pull: up ? 'up' : 'down',
+    defaults: { Bits: 1 }, props: [P.bits],
+    geo(a) { return { pins: [{ n: 'out', bits: a.Bits, x: 0, y: 0, out: true, vert: true, pull: true }], box: up ? { x0: -10, y0: -2 * S - 6, x1: 10, y1: 0 } : { x0: -10, y0: 0, x1: 10, y1: 2 * S } }; },
+    eval() { return [null]; },
+    draw(r) {
+      const d = up ? -1 : 1;
+      r.rect(-7, d * 1, 7, d * 26, true);
+      r.line(0, d * 26, 0, d * 2 * S);
+      if (up) r.poly([[-10, -2 * S + 6], [0, -2 * S - 4], [10, -2 * S + 6]], false); else r.line(-10, 2 * S, 10, 2 * S, 3);
+    },
+  };
+}
+// Bus-Splitter (bidirektional mit OE): Anschlüsse D (gemeinsam), OE, D0..Dn
+const BusSplitter = {
+  type: 'BusSplitter', name: 'Bus-Splitter', cat: 'Leitungen',
+  defaults: { Bits: 1, splitterSpreading: 1 }, initial: { Bits: 8 }, props: [P.bits],
+  geo(a) {
+    const n = a.Bits, sp = (a.splitterSpreading || 1) * S;
+    const pins = [{ n: 'OE', bits: 1, x: 0, y: S, out: false }, { n: 'D', bits: n, x: 0, y: 0, out: false }];
+    for (let i = 0; i < n; i++) pins.push({ n: 'D' + i, bits: 1, x: S, y: i * sp, out: false });
+    pins.push({ n: 'D', bits: n, x: 0, y: 0, out: true });
+    for (let i = 0; i < n; i++) pins.push({ n: 'D' + i, bits: 1, x: S, y: i * sp, out: true });
+    const len = (Math.max(3, n) - 1) * sp + 2;
+    return { pins, n, len, box: { x0: -4, y0: -4, x1: S + 4, y1: len } };
+  },
+  eval(ins, st, a, g) {
+    const n = g.n, oe = v0(ins[0]);
+    if (oe) {
+      const d = ins[1];
+      return [null, ...Array.from({ length: n }, (_, i) => (d == null ? null : Math.floor(d / 2 ** i) & 1))];
+    }
+    const bits = ins.slice(2, 2 + n);
+    const all = bits.some(b => b == null) ? null : bits.reduce((s, b, i) => s + (b & 1) * 2 ** i, 0);
+    return [all, ...Array(n).fill(null)];
+  },
+  draw(r, c, a, g) {
+    r.line(0, 0, 10, 0); r.line(0, S, 10, S);
+    r.text(-2, -3, 'D', -1, -1, 9, 'pinlabel'); r.text(-2, S - 3, 'OE', -1, -1, 9, 'pinlabel');
+    for (let i = 0; i < g.n; i++) { const y = i * (a.splitterSpreading || 1) * S; r.line(S, y, 10, y); r.text(S + 2, y - 3, String(i), 1, -1, 9, 'pinlabel'); }
+    r.poly([[8, -2], [12, -2], [12, g.len], [8, g.len]], true, null, 0, '#222');
+  },
+};
+const BitExtender = {
+  type: 'BitExtender', name: 'Vorzeichenerweiterung', cat: 'Arithmetik',
+  defaults: { inputBits: 8, outputBits: 16, Label: '' },
+  props: [{ key: 'inputBits', label: 'Eingangsbits', type: 'int', min: 1, max: 31 }, { key: 'outputBits', label: 'Ausgangsbits', type: 'int', min: 2, max: 32 }],
+  geo(a) { return generic({ ins: [{ n: 'in', bits: a.inputBits }], outs: [{ n: 'out', bits: a.outputBits }], width: 3 }); },
+  eval(ins, st, a) {
+    const v = ins[0]; if (v == null) return [null];
+    const neg = (v >> (a.inputBits - 1)) & 1;
+    return [neg ? ((v | (mask(a.outputBits) - mask(a.inputBits))) >>> 0) : v];
+  },
+  draw(r, c, a, g) { drawGenericBox(r, g, a, { title: 'Vorzeichen' }); },
+};
+// N-Kanal-FET (vereinfacht: leitet von S nach D, wenn G = 1) – reicht für Open-Collector-Ausgänge
+const NFET = {
+  type: 'NFET', name: 'N-FET', cat: 'Leitungen',
+  defaults: { Bits: 1, Label: '' }, props: [P.label],
+  geo(a) { return { pins: [{ n: 'G', bits: 1, x: 0, y: 2 * S, out: false }, { n: 'S', bits: a.Bits, x: S, y: 2 * S, out: false, vert: true }, { n: 'D', bits: a.Bits, x: S, y: 0, out: true, vert: true }], box: { x0: 0, y0: 0, x1: S + 10, y1: 2 * S } }; },
+  eval(ins) { return [v0(ins[0]) ? ins[1] : null]; },
+  draw(r) {
+    r.poly([[S, 0], [8, 0], [8, 8]], false); r.poly([[S, 2 * S], [8, 2 * S], [8, 2 * S - 8]], false);
+    r.line(8, 13, 8, 27); r.line(1, 0, 1, 2 * S); r.line(13, S, S, S, 1);
+    r.poly([[12, S], [17, S - 3], [17, S + 3]], true, null, 0, '#222');
+  },
+};
+// Spannungsversorgung (in den 74xx-Chips von Digital) – ohne Funktion in der Simulation
+const PowerSupply = {
+  type: 'PowerSupply', name: 'Spannungsversorgung', cat: null,
+  defaults: { Label: '' }, props: [],
+  geo() { return generic({ ins: [{ n: 'VDD', bits: 1 }, { n: 'GND', bits: 1 }], outs: [], width: 3 }); },
+  eval() { return []; },
+  draw(r, c, a, g) { drawGenericBox(r, g, a, { title: 'Versorgung' }); },
 };
 
 // ---------- Plexer ----------
@@ -418,10 +564,11 @@ function demuxDraw(r, c, a, g) {
 }
 const Demux = {
   type: 'Demultiplexer', name: 'Demultiplexer', cat: 'Plexer',
-  defaults: { 'Selector Bits': 1, Bits: 1, flipSelPos: false },
+  defaults: { 'Selector Bits': 1, Bits: 1, flipSelPos: false, Default: 0 },
   props: [P.selBits, P.bits, P.flip],
   geo: a => demuxGeo(a, true),
-  eval(ins, st, a, g) { const s = v0(ins[0]); return range(g.n).map(i => (i === s ? v0(ins[1]) : 0)); },
+  // nicht ausgewählte Ausgänge liefern den Wert "Default" (wie in Digital)
+  eval(ins, st, a, g) { const s = v0(ins[0]), d = (a.Default || 0) & mask(a.Bits); return range(g.n).map(i => (i === s ? v0(ins[1]) : d)); },
   draw: demuxDraw,
 };
 const Decoder = {
@@ -434,45 +581,63 @@ const Decoder = {
 };
 
 // ---------- Flipflops ----------
-function ff(type, name, inNames, step, extraDefaults = {}, extraProps = []) {
+function ff(type, name, inNames, step, extraDefaults = {}, extraProps = [], cat = 'Flipflops') {
   return {
-    type, name, cat: 'Flipflops',
-    defaults: { Label: '', ...extraDefaults },
+    type, name, cat,
+    defaults: { Label: '', inverterConfig: [], Default: 0, ...extraDefaults },
     props: [P.label, ...extraProps],
     geo(a) {
       const names = typeof inNames === 'function' ? inNames(a) : inNames;
       const bits = a.Bits || 1;
       return generic({
-        ins: names.map(n => ({ n, bits: n === 'C' ? 1 : bits, clock: n === 'C' })),
-        outs: [{ n: 'Q', bits }, { n: '~Q', bits }], width: 3,
+        ins: names.map(n => ({ n, bits: n === 'C' || n === 'Set' || n === 'Clr' ? 1 : bits, clock: n === 'C' })),
+        outs: [{ n: 'Q', bits }, { n: '~Q', bits }], width: 3, invIn: invSet(a, names),
       });
     },
-    init(st) { st.q = 0; st.c = 0; },
+    init(st, a) { st.q = (a.Default || 0) & mask(a.Bits || 1); st.c = 0; },
     eval(ins, st, a, g) {
+      const m = mask(a.Bits || 1);
+      ins = applyInv(ins, g);
       const names = g.pins.filter(p => !p.out).map(p => p.n);
       const v = {}; names.forEach((n, i) => (v[n] = v0(ins[i])));
-      const m = mask(a.Bits || 1);
       if (v.C && !st.c) st.q = step(v, st.q, m, a) & m;
       st.c = v.C;
+      // asynchrones Setzen/Rücksetzen (D_FF_AS, JK_FF_AS)
+      if (v.Set) st.q = m; else if (v.Clr) st.q = 0;
       return [st.q >>> 0, (~st.q & m) >>> 0];
     },
     draw(r, c, a, g) { drawGenericBox(r, g, a); },
   };
 }
+// RS-Flipflop ohne Takt (Digital: RS_FF_AS), pegelgesteuert
+const RS_AS = {
+  type: 'RS_FF_AS', name: 'RS-Flipflop (asynchron)', cat: 'Flipflops',
+  defaults: { Label: '', inverterConfig: [], Default: 0 },
+  props: [P.label],
+  geo(a) { return generic({ ins: [{ n: 'S', bits: 1 }, { n: 'R', bits: 1 }], outs: [{ n: 'Q', bits: 1 }, { n: '~Q', bits: 1 }], width: 3, invIn: invSet(a, ['S', 'R']) }); },
+  init(st, a) { st.q = a.Default ? 1 : 0; st.qn = 1 - st.q; },
+  eval(ins, st, a, g) {
+    const [s, r] = applyInv(ins, g).map(v0);
+    if (s && r) { st.q = 0; st.qn = 0; } else if (s) { st.q = 1; st.qn = 0; } else if (r) { st.q = 0; st.qn = 1; } else if (!st.q && !st.qn) { st.q = 1; }
+    return [st.q, st.qn];
+  },
+  draw(r, c, a, g) { drawGenericBox(r, g, a); },
+};
 
 // ---------- Arithmetik ----------
-function arith(type, name, ins, outs, ev, defaults, props) {
+function arith(type, name, ins, outs, ev, defaults, props, initial) {
   return {
-    type, name, cat: 'Arithmetik', defaults: { Bits: 1, Label: '', ...defaults }, props: [P.bits, P.label, ...(props || [])],
+    type, name, cat: 'Arithmetik', defaults: { Bits: 1, Label: '', ...defaults }, initial, props: [P.bits, P.label, ...(props || [])],
     geo(a) {
+      const iv = ins.map(n => (typeof n === 'string' ? { n, bits: a.Bits } : { ...n, bits: n.bits || a.Bits }));
       return generic({
-        ins: ins.map(n => (typeof n === 'string' ? { n, bits: a.Bits } : { ...n, bits: n.bits || a.Bits })),
+        ins: iv,
         outs: outs.map(n => (typeof n === 'string' ? { n, bits: a.Bits } : { ...n, bits: n.bits || a.Bits })),
-        width: 3,
+        width: 3, invIn: invSet(a, iv.map(p => p.n)),
       });
     },
     init(st) { st.q = 0; st.c = 0; },
-    eval: ev,
+    eval(insV, st, a, g) { return ev(g.pins.some(p => p.inv) ? insV.map((x, i) => (g.pins[i].inv && x != null ? (~x & mask(g.pins[i].bits || 1)) >>> 0 : x)) : insV, st, a, g); },
     draw(r, c, a, g) { drawGenericBox(r, g, a, { title: name }); },
   };
 }
@@ -481,26 +646,30 @@ const Add = arith('Add', 'Addierer', ['a', 'b', { n: 'c_i', bits: 1 }], ['s', { 
   const m = mask(a.Bits); const sum = v0(ins[0]) + v0(ins[1]) + (v0(ins[2]) & 1);
   return [sum % (m + 1), sum > m ? 1 : 0];
 });
-const Comparator = arith('Comparator', 'Komparator', ['a', 'b'], [{ n: '=', bits: 1 }, { n: '>', bits: 1 }, { n: '<', bits: 1 }], ins => {
-  const x = v0(ins[0]), y = v0(ins[1]); return [x === y ? 1 : 0, x > y ? 1 : 0, x < y ? 1 : 0];
-});
+// Ausgänge in der Reihenfolge von Digital: >, =, <
+const Comparator = arith('Comparator', 'Komparator', ['a', 'b'], [{ n: '>', bits: 1 }, { n: '=', bits: 1 }, { n: '<', bits: 1 }], (ins, st, a) => {
+  let x = v0(ins[0]), y = v0(ins[1]);
+  if (a.Signed) { const h = 2 ** (a.Bits - 1); if (x >= h) x -= 2 * h; if (y >= h) y -= 2 * h; }
+  return [x > y ? 1 : 0, x === y ? 1 : 0, x < y ? 1 : 0];
+}, { Signed: false }, [{ key: 'Signed', label: 'Vorzeichenbehaftet', type: 'bool' }]);
 const Counter = arith('Counter', 'Zähler', [{ n: 'en', bits: 1 }, { n: 'C', bits: 1, clock: true }, { n: 'clr', bits: 1 }], ['out', { n: 'ovf', bits: 1 }], (ins, st, a) => {
   const m = mask(a.Bits); const en = v0(ins[0]), C = v0(ins[1]), clr = v0(ins[2]);
   if (C && !st.c) { if (clr) st.q = 0; else if (en) st.q = st.q >= m ? 0 : st.q + 1; }
   st.c = C;
   return [st.q, en && st.q === m ? 1 : 0];
-}, { Bits: 4 });
+}, {}, null, { Bits: 4 });
 const Register = arith('Register', 'Register', ['D', { n: 'C', bits: 1, clock: true }, { n: 'en', bits: 1 }], ['Q'], (ins, st, a) => {
   const C = v0(ins[1]);
   if (C && !st.c && v0(ins[2])) st.q = v0(ins[0]) & mask(a.Bits);
   st.c = C;
   return [st.q];
-}, { Bits: 8 });
+}, {}, null, { Bits: 8 });
 
 // ---------- Sonstiges ----------
 const Text = {
   type: 'Text', name: 'Text', cat: 'Sonstiges',
-  defaults: { Description: 'Text' },
+  defaults: { Description: '' },
+  initial: { Description: 'Text' },
   props: [P.desc],
   geo(a) {
     const lines = String(a.Description || '').split('\n');
@@ -519,26 +688,65 @@ export function subInterface(circuit) {
   const ins = [], outs = [];
   for (const k of circuit.comps) {
     const a = { ...DEF[k.type]?.defaults, ...k.attrs };
-    if (k.type === 'In') ins.push({ n: a.Label || '?', bits: a.Bits || 1 });
-    else if (k.type === 'Clock') ins.push({ n: a.Label || '?', bits: 1, clock: true });
-    else if (k.type === 'Out') outs.push({ n: a.Label || '?', bits: a.Bits || 1 });
+    const pn = parseInt(a.pinNumber) || 0;
+    if (k.type === 'In') ins.push({ n: a.Label || '?', bits: a.Bits || 1, pn });
+    else if (k.type === 'Clock') ins.push({ n: a.Label || '?', bits: 1, clock: true, pn });
+    else if (k.type === 'Out') outs.push({ n: a.Label || '?', bits: a.Bits || 1, pn });
   }
   return { ins, outs };
 }
+// DIL-Gehäuse wie in Digital: Pin 1..n/2 links von oben, Rest rechts von unten, Abstand 40
+function dilGeo(sub, ins, outs) {
+  const top = sub.top || {};
+  const width = (top.Width ?? 3) + 1;
+  const all = [...ins.map(p => ({ ...p, out: false })), ...outs.map(p => ({ ...p, out: true }))];
+  const map = new Map(); const rest = [];
+  let pc = top.pinCount || 0;
+  for (const p of all) { if (!p.pn || map.has(p.pn)) rest.push(p); else { map.set(p.pn, p); pc = Math.max(pc, p.pn); } }
+  let num = 1;
+  for (const p of rest) { while (map.has(num)) num++; map.set(num, p); p.pn = num; }
+  pc = Math.max(pc, num); if (pc & 1) pc++;
+  const pos = n => (n <= pc / 2 ? [0, (n - 1) * 2 * S] : [S * width, (pc - n) * 2 * S]);
+  const pins = all.map(p => { const n = [...map].find(([, q]) => q === p)[0]; const [x, y] = pos(n); return { n: p.n, bits: p.bits, clock: p.clock, x, y, out: p.out, num: n }; });
+  const h = (pc / 2) * 2 * S - S;
+  return { pins, dil: true, width, pc, map, box: { x0: 0, y0: -S, x1: S * width, y1: h } };
+}
 const Sub = {
   type: 'Sub', name: 'Baustein', cat: null,
-  defaults: { Label: '', Width: 3 },
-  props: [{ ...P.label, hint: 'Mit Beschriftung erscheinen die Ausgänge des Bausteins in der Wertetabelle als Zwischenschritte (z. B. HA1.S).' }, { key: 'Width', label: 'Breite', type: 'int', min: 2, max: 10 }],
+  defaults: { Label: '' },
+  props: [{ ...P.label, hint: 'Mit Beschriftung erscheinen die Ausgänge des Bausteins in der Wertetabelle als Zwischenschritte (z. B. HA1.S).' }],
   geo(a, c) {
-    const sub = library.get(c?.sub);
+    const sub = getCircuit(c?.sub);
     if (!sub) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };
     const { ins, outs } = subInterface(sub);
     if (!ins.length && !outs.length) return { pins: [], missing: true, box: { x0: 0, y0: -10, x1: 100, y1: 30 } };
-    return generic({ ins, outs: outs.length ? outs : [], width: a.Width || 3 });
+    if (sub.top?.shapeType === 'DIL') return dilGeo(sub, ins, outs);
+    return generic({ ins, outs: outs.length ? outs : [], width: sub.top?.Width ?? 3 });
   },
   eval() { return []; },
   draw(r, c, a, g) {
     if (g.missing) { r.rect(0, -10, 100, 30, true, '#fde8e8'); r.text(50, 10, (c.sub || '?') + ' fehlt', 0, 0, 11, 'name'); return; }
+    if (g.dil) {
+      const x = S * g.width, p = 10, h = (g.pc / 2) * 2 * S - S, R = S / 2;
+      r.path(ctx => {
+        ctx.moveTo(p, -S); ctx.lineTo(x / 2 - R, -S); ctx.arc(x / 2, -S, R, Math.PI, 0, true);
+        ctx.lineTo(x - p, -S); ctx.lineTo(x - p, h); ctx.lineTo(p, h); ctx.closePath();
+      });
+      const nice = t => String(t).replace(/_/g, '');
+      for (let i = 0; i < g.pc / 2; i++) {
+        const y = i * 2 * S;
+        r.poly([[p, y - p / 2], [2, y - p / 2], [2, y + p / 2], [p, y + p / 2]], false);
+        r.poly([[x - p, y - p / 2], [x - 2, y - p / 2], [x - 2, y + p / 2], [x - p, y + p / 2]], false);
+        const lp = g.map.get(i + 1), rp = g.map.get(g.pc - i);
+        if (lp) r.text(p + 5, y, nice(lp.n), 1, 0, 11, 'pinlabel');
+        if (rp) r.text(x - p - 5, y, nice(rp.n), -1, 0, 11, 'pinlabel');
+        r.text(-2, y - 3, String(i + 1), -1, -1, 8, 'name');
+        r.text(x + 2, y - 3, String(g.pc - i), 1, -1, 8, 'name');
+      }
+      r.text(x / 2, S, c.sub, 0, 0, 13, 'symbol');   // zwischen erster und zweiter Pin-Reihe
+      if (a.Label) r.text(x / 2, h + 4, a.Label, 0, 1, 13, 'label');
+      return;
+    }
     drawGenericBox(r, g, a, { title: c.sub });
   },
 };
@@ -546,7 +754,8 @@ const Sub = {
 // Testfall (Digital: "Testcase")
 const Testcase = {
   type: 'Testcase', name: 'Testfall', cat: 'Sonstiges',
-  defaults: { Label: '', Testdata: 'A B Y\n0 0 0\n0 1 0\n1 0 0\n1 1 1' },
+  defaults: { Label: '', Testdata: '' },
+  initial: { Testdata: 'A B Y\n0 0 0\n0 1 0\n1 0 0\n1 1 1' },
   props: [P.label, { key: 'Testdata', label: 'Testdaten', type: 'textarea', mono: true, hint: 'Erste Zeile: Namen der Ein- und Ausgänge. Dann je Zeile die Werte. X = beliebig, C = Taktimpuls, # = Kommentar.' }],
   geo() { return { pins: [], box: { x0: 0, y0: 0, x1: 80, y1: 40 } }; },
   eval() { return []; },
@@ -576,16 +785,20 @@ export const DEFS = [
   gate('NOr', 'NOR', '≥1', OR, true, ieeeOr),
   gate('XOr', 'XOR', '=1', XOR, false, (r, g) => ieeeOr(r, g, true)),
   gate('XNOr', 'XNOR', '=1', XOR, true, (r, g) => ieeeOr(r, g, true)),
-  Tunnel, Splitter,
+  Tunnel, Splitter, driver('Driver', 'Treiber (Tri-State)', false), driver('DriverInvSel', 'Treiber, Steuerung invertiert', true),
+  BusSplitter, pull('PullUp', 'Pull-up', true), pull('PullDown', 'Pull-down', false), Delay, NFET,
   Mux, Demux, Decoder,
   ff('RS_FF', 'RS-Flipflop', ['S', 'C', 'R'], (v, q) => (v.S && !v.R ? 1 : !v.S && v.R ? 0 : q)),
   ff('JK_FF', 'JK-Flipflop', ['J', 'C', 'K'], (v, q) => (v.J && v.K ? ~q : v.J ? 1 : v.K ? 0 : q)),
   ff('D_FF', 'D-Flipflop', ['D', 'C'], v => v.D, { Bits: 1 }, [P.bits]),
   ff('T_FF', 'T-Flipflop', a => (a.withEnable === false ? ['C'] : ['T', 'C']), (v, q, m, a) => (a.withEnable === false || v.T ? ~q : q), { withEnable: true }, [P.withEnable]),
-  Add, Comparator, Counter, Register,
+  ff('D_FF_AS', 'D-Flipflop (Set/Clr)', ['Set', 'D', 'C', 'Clr'], v => v.D, { Bits: 1 }, [P.bits]),
+  ff('JK_FF_AS', 'JK-Flipflop (Set/Clr)', ['Set', 'J', 'C', 'K', 'Clr'], (v, q) => (v.J && v.K ? ~q : v.J ? 1 : v.K ? 0 : q)),
+  RS_AS,
+  Add, Comparator, Counter, Register, BitExtender,
   Text, Testcase,
 ];
-export const DEF = Object.fromEntries([...DEFS, Unknown, Sub].map(d => [d.type, d]));
+export const DEF = Object.fromEntries([...DEFS, Unknown, Sub, PowerSupply].map(d => [d.type, d]));
 export const CATEGORIES = [...new Set(DEFS.map(d => d.cat))];
 
 export function attrsOf(c) {

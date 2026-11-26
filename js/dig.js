@@ -5,9 +5,11 @@ import { DEF } from './components.js';
 const TYPES = {
   Inputs: 'int', Bits: 'int', Width: 'int', 'Selector Bits': 'int', Frequency: 'int', splitterSpreading: 'int',
   Value: 'long',
-  wideShape: 'boolean', flipSelPos: 'boolean', runRealTime: 'boolean', withEnable: 'boolean', ActiveLow: 'boolean',
+  wideShape: 'boolean', flipSelPos: 'boolean', runRealTime: 'boolean', withEnable: 'boolean', activeLow: 'boolean',
   Label: 'string', NetName: 'string', Description: 'string', Testdata: 'testData', 'Input Splitting': 'string', 'Output Splitting': 'string',
   Color: 'awt-color', intFormat: 'intFormat', inverterConfig: 'inverterConfig', InDefault: 'value',
+  pinNumber: 'string', segSize: 'int', commonCathode: 'boolean', commonConnectionType: 'enum', invertDriverOutput: 'boolean',
+  inputBits: 'int', Signed: 'boolean', isHighZ: 'boolean', outputBits: 'int', delayTime: 'int', Default: 'int', pinCount: 'int', shapeType: 'enum',
 };
 
 export function parseDig(text) {
@@ -19,7 +21,16 @@ export function parseDig(text) {
   const ser = new XMLSerializer();
   const unknown = new Set();
   const topAttr = [...root.children].find(e => e.nodeName === 'attributes');
-  if (topAttr && topAttr.children.length) c.digAttributes = ser.serializeToString(topAttr);
+  if (topAttr && topAttr.children.length) {
+    c.digAttributes = ser.serializeToString(topAttr);
+    // Gestalt als Baustein (DIL-Gehäuse, Breite, Pinzahl)
+    const top = {};
+    for (const entry of topAttr.children) {
+      const [k, v] = entry.children; if (!k || !v) continue;
+      if (['Width', 'shapeType', 'pinCount', 'Description'].includes(k.textContent)) top[k.textContent] = readValue(v);
+    }
+    if (Object.keys(top).length) c.top = top;
+  }
 
   const ve = [...root.children].find(e => e.nodeName === 'visualElements');
   for (const el of ve ? [...ve.children] : []) {
@@ -66,6 +77,7 @@ function readValue(v) {
     case 'inverterConfig': return [...v.children].map(s => s.textContent);
     case 'value': return Number(v.getAttribute('v') || 0);
     case 'testData': return v.querySelector('dataString')?.textContent ?? '';
+    case 'commonConnectionType': case 'shapeType': return v.textContent.trim();
     default: return undefined;
   }
 }
@@ -82,6 +94,7 @@ function writeValue(key, val) {
     case 'awt-color': return `<awt-color>\n          <red>${val.r}</red>\n          <green>${val.g}</green>\n          <blue>${val.b}</blue>\n          <alpha>255</alpha>\n        </awt-color>`;
     case 'inverterConfig': return `<inverterConfig>${val.map(s => `<string>${esc(s)}</string>`).join('')}</inverterConfig>`;
     case 'value': return `<value v="${Math.round(val)}" z="false"/>`;
+    case 'enum': return `<${key}>${esc(val)}</${key}>`;
     case 'testData': return `<testData>\n          <dataString>${esc(val)}</dataString>\n        </testData>`;
     default: return null;
   }
@@ -89,7 +102,7 @@ function writeValue(key, val) {
 
 export function writeDig(circuit) {
   const L = ['<?xml version="1.0" encoding="utf-8"?>', '<circuit>', '  <version>2</version>'];
-  L.push(circuit.digAttributes ? '  ' + circuit.digAttributes : '  <attributes/>');
+  L.push('  ' + topAttributes(circuit));
   L.push('  <visualElements>');
   for (const c of circuit.comps) {
     const def = DEF[c.type];
@@ -118,3 +131,27 @@ export function writeDig(circuit) {
 
 // "pfad/Halbaddierer.dig" -> "Halbaddierer"
 export const subName = n => n.split(/[\\/]/).pop().replace(/\.dig$/i, '');
+
+// <attributes> der Schaltung: vorhandene (unbekannte) Einträge behalten, Gestalt als Baustein aktualisieren
+const TOP_TYPES = { shapeType: 'enum', Width: 'int', pinCount: 'int', Description: 'string' };
+function topAttributes(circuit) {
+  const top = circuit.top || {};
+  const keep = [];
+  if (circuit.digAttributes) {
+    const doc = new DOMParser().parseFromString(circuit.digAttributes, 'application/xml');
+    const ser = new XMLSerializer();
+    for (const e of [...doc.documentElement.children]) {
+      const k = e.children[0]?.textContent;
+      if (!(k in TOP_TYPES)) keep.push(ser.serializeToString(e));
+    }
+  }
+  const own = [];
+  for (const [k, t] of Object.entries(TOP_TYPES)) {
+    const v = top[k];
+    if (v == null || v === '' || (k === 'shapeType' && v === 'DEFAULT') || (k === 'pinCount' && !v)) continue;
+    const xml = t === 'enum' ? `<${k}>${esc(v)}</${k}>` : t === 'int' ? `<int>${Math.round(v)}</int>` : `<string>${esc(v)}</string>`;
+    own.push(`<entry>\n      <string>${k}</string>\n      ${xml}\n    </entry>`);
+  }
+  const all = [...keep, ...own];
+  return all.length ? '<attributes>\n    ' + all.join('\n    ') + '\n  </attributes>' : '<attributes/>';
+}

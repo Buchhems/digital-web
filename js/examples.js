@@ -38,7 +38,7 @@ export const EXAMPLES = [
         { type: 'In', x: 240, y: 160, attrs: { Label: 'clr' } },
         { type: 'Counter', x: 300, y: 100, attrs: { Bits: 4 } },
         { type: 'Out', x: 460, y: 100, attrs: { Bits: 4, Label: 'Q' } },
-        { type: 'Seven-Seg-Hex', x: 560, y: 40, attrs: {} },
+        { type: 'Seven-Seg-Hex', x: 540, y: 40, attrs: {} },
       ],
       wires: W([[280, 100, 300, 100], [240, 120, 300, 120], [240, 160, 280, 160], [280, 160, 280, 140], [280, 140, 300, 140], [360, 100, 460, 100], [400, 100, 400, 200], [400, 200, 580, 200], [580, 200, 580, 180]]),
     },

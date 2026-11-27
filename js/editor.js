@@ -2,12 +2,49 @@
 import { DEF, attrsOf, geoOf, pinsWorld, boundsWorld, xform, S, formatValue } from './components.js';
 import { buildNets, junctions } from './circuit.js';
 
-const COL = {
-  bg: '#f7f7f4', grid: '#cfd2d6', fg: '#1d1f22', body: '#ffffff',
-  wire: '#24439b', sel: '#2563eb', selFill: 'rgba(37,99,235,0.12)',
+// Farben der Zeichenfläche (hell/dunkel)
+const LIGHT = {
+  bg: '#f7f7f4', simBg: '#f3f7f3', grid: '#cfd2d6', fg: '#1d1f22', body: '#ffffff',
+  wire: '#24439b', sel: '#2563eb', selFill: 'rgba(37,99,235,0.12)', dot: '#333333',
   low: '#0b7a2a', high: '#34d058', z: '#8b8bf5', err: '#e11d48', bus: '#1f5f33',
-  pinIn: '#2563eb', pinOut: '#dc2626',
+  pinIn: '#2563eb', pinOut: '#dc2626', snap: '#16a34a',
+  label: '#1e3a8a', name: '#6b7280', pinlabel: '#4b5563', valueDark: '#064e1b',
 };
+const DARK = {
+  bg: '#15181d', simBg: '#131a16', grid: '#3a414b', fg: '#e3e6ea', body: '#232830',
+  wire: '#7ea6ff', sel: '#5b8cff', selFill: 'rgba(91,140,255,0.18)', dot: '#d5dbe3',
+  low: '#1d8a3c', high: '#4ade80', z: '#a5a5ff', err: '#fb7185', bus: '#3fae68',
+  pinIn: '#5b8cff', pinOut: '#f87171', snap: '#22c55e',
+  label: '#9dc0ff', name: '#9aa3af', pinlabel: '#b8c0cb', valueDark: '#064e1b',
+};
+const COL = { ...LIGHT };
+let dark = false;
+export function setDarkCanvas(on) { dark = !!on; Object.assign(COL, on ? DARK : LIGHT); tcCache.clear(); rebuildKind(); }
+export const isDarkCanvas = () => dark;
+
+// Farben aus den Bauteilzeichnungen für das dunkle Schema umrechnen:
+// Grautöne werden in der Helligkeit umgekehrt, sehr helle Pastelltöne abgedunkelt, kräftige Farben bleiben.
+const tcCache = new Map();
+// Gerätefarben (Gehäuse der 7-Segment-Anzeige, LED aus) bleiben wie sie sind
+const KEEP = new Set(['#1b1b1b', '#3a3a3a', '#444', '#7a7a7a']);
+function tc(col) {
+  if (!dark || typeof col !== 'string' || KEEP.has(col.toLowerCase())) return col;
+  if (tcCache.has(col)) return tcCache.get(col);
+  let m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(col), rgb = null;
+  if (m) { const h = m[1].length === 3 ? [...m[1]].map(c => c + c).join('') : m[1]; rgb = [0, 2, 4].map(i => parseInt(h.substr(i, 2), 16) / 255); }
+  else if ((m = /^rgba?\(([^)]+)\)$/i.exec(col))) { const p = m[1].split(',').map(x => parseFloat(x)); if (p.length >= 3 && !(p[3] < 1)) rgb = p.slice(0, 3).map(v => v / 255); }
+  let out = col;
+  if (rgb) {
+    const mx = Math.max(...rgb), mn = Math.min(...rgb), l = (mx + mn) / 2, d = mx - mn;
+    const sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let h = 0;
+    if (d) { const [r, g, b] = rgb; h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; if (h < 0) h += 360; }
+    if (sat < 0.18) out = `hsl(${h.toFixed(0)},${(sat * 100).toFixed(0)}%,${((0.13 + (1 - l) * 0.78) * 100).toFixed(0)}%)`;
+    else if (l > 0.86) out = `hsl(${h.toFixed(0)},${(sat * 45).toFixed(0)}%,22%)`;
+  }
+  tcCache.set(col, out);
+  return out;
+}
 const snap = v => Math.round(v / S) * S;
 
 export class Editor {
@@ -344,7 +381,7 @@ export class Editor {
   render() {
     const ctx = this.ctx, { s, ox, oy } = this.view, dpr = this.dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = this.sim ? '#f3f7f3' : COL.bg;
+    ctx.fillStyle = this.sim ? COL.simBg : COL.bg;
     ctx.fillRect(0, 0, this.w, this.h);
     if (!this.circuit) return;
     // Raster
@@ -387,7 +424,7 @@ export class Editor {
       ctx.strokeStyle = col; ctx.lineWidth = bits > 1 ? 4.5 : 2.5;
       ctx.beginPath(); ctx.moveTo(w.x1, w.y1); ctx.lineTo(w.x2, w.y2); ctx.stroke();
     }
-    ctx.fillStyle = sim ? '#333' : COL.wire;
+    ctx.fillStyle = sim ? COL.dot : COL.wire;
     for (const [x, y] of junc) { ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); }
 
     // Bauteile
@@ -421,7 +458,7 @@ export class Editor {
       for (const p of [pts[0], pts[pts.length - 1]]) { ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.fill(); }
       // Anschluss, an dem die Leitung andocken wird, deutlich hervorheben (sichtbar neben dem Finger)
       if (a.snapPin) {
-        ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(22,163,74,0.18)';
+        ctx.strokeStyle = COL.snap; ctx.lineWidth = 3; ctx.fillStyle = 'rgba(22,163,74,0.18)';
         ctx.beginPath(); ctx.arc(a.snapPin.x, a.snapPin.y, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }
     }
@@ -475,18 +512,18 @@ export function drawPreview(canvas, type, attrs = {}, sub) {
 }
 
 function makeRenderer(ctx, c, texts) {
-  const fill = (f, stroke = true) => { if (f !== null) { ctx.fillStyle = f || COL.body; ctx.fill(); } if (stroke) ctx.stroke(); };
+  const fill = (f, stroke = true) => { if (f !== null) { ctx.fillStyle = tc(f) || COL.body; ctx.fill(); } if (stroke) ctx.stroke(); };
   return {
-    ctx,
+    ctx, tc,
     rect(x0, y0, x1, y1, doFill = true, f) { ctx.beginPath(); ctx.rect(x0, y0, x1 - x0, y1 - y0); fill(doFill ? f : null); },
     line(x1, y1, x2, y2, lw) { ctx.save(); if (lw) ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.restore(); },
     poly(pts, closed = true, stroke = null, lw = null, f) {
       ctx.save();
       ctx.beginPath(); ctx.moveTo(...pts[0]); for (const p of pts.slice(1)) ctx.lineTo(...p);
       if (closed) ctx.closePath();
-      if (stroke) ctx.strokeStyle = stroke;
+      if (stroke) ctx.strokeStyle = tc(stroke);
       if (lw) ctx.lineWidth = lw;
-      if (closed) { ctx.fillStyle = f || COL.body; ctx.fill(); }
+      if (closed) { ctx.fillStyle = tc(f) || COL.body; ctx.fill(); }
       if (lw !== 0) ctx.stroke();
       ctx.restore();
     },
@@ -506,10 +543,14 @@ function makeRenderer(ctx, c, texts) {
   };
 }
 
-const KIND = {
-  label: ['600', '#1e3a8a'], symbol: ['700', COL.fg], name: ['400', '#6b7280'], value: ['700', COL.fg],
-  pinlabel: ['400', '#4b5563'], valueDark: ['700', '#064e1b'], valueLight: ['700', '#ffffff'], text: ['400', COL.fg], bus: ['700', COL.bus],
-};
+const KIND = {};
+function rebuildKind() {
+  Object.assign(KIND, {
+    label: ['600', COL.label], symbol: ['700', COL.fg], name: ['400', COL.name], value: ['700', COL.fg],
+    pinlabel: ['400', COL.pinlabel], valueDark: ['700', COL.valueDark], valueLight: ['700', '#ffffff'], text: ['400', COL.fg], bus: ['700', COL.bus],
+  });
+}
+rebuildKind();
 function drawText(ctx, t) {
   const [weight, color] = KIND[t.kind] || ['400', COL.fg];
   ctx.font = `${weight} ${t.size}px -apple-system, "Segoe UI", Roboto, sans-serif`;

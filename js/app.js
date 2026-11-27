@@ -3,7 +3,7 @@ import { parseData, formatData } from './comp-mem.js';
 import { touchGenerics } from './generics.js';
 import { Circuit } from './circuit.js';
 import { Sim } from './sim.js';
-import { Editor, drawPreview } from './editor.js';
+import { Editor, drawPreview, setDarkCanvas } from './editor.js';
 import { parseDig, writeDig, subName } from './dig.js';
 import { truthTable, columnExpr } from './analysis.js';
 import { stateAnalysis, stateDiagramSVG } from './seq.js';
@@ -20,7 +20,7 @@ import { makeModule as moduleFromSelection, route as routeWire } from './module.
 const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const STORE = 'digitalweb.v1';
-const VERSION = 'Version 12 · 26.11.2026';
+const VERSION = 'Version 15 · 27.11.2026';
 
 // ---------- Zustand ----------
 // Ein Projekt besteht aus mehreren Schaltungen (library). Jede kann in den anderen als Baustein dienen.
@@ -50,6 +50,18 @@ const editor = new Editor($('#canvas'), {
 // ---------- Einstellungen ----------
 try { Object.assign(settings, JSON.parse(localStorage.getItem(STORE + '.settings') || '{}')); } catch { }
 const saveSettings = () => { try { localStorage.setItem(STORE + '.settings', JSON.stringify(settings)); } catch { } };
+
+// Erscheinungsbild: hell, dunkel oder wie das Gerät (settings.theme = 'auto' | 'light' | 'dark')
+const darkQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const dark = settings.theme === 'dark' || ((settings.theme || 'auto') === 'auto' && !!darkQuery?.matches);
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', dark ? '#1c2027' : '#ffffff');
+  setDarkCanvas(dark);
+  if (typeof editor !== 'undefined' && editor) { buildPalette(); editor.invalidate?.(); editor.redraw?.(); }
+}
+darkQuery?.addEventListener?.('change', () => { if ((settings.theme || 'auto') === 'auto') applyTheme(); });
+setDarkCanvas(document.documentElement.dataset.theme === 'dark');
 
 // ---------- Projekt / Verlauf ----------
 function snapshot() { return JSON.stringify(circuit.toJSON()); }
@@ -186,6 +198,10 @@ function buildPalette() {
   const subs = [...library.keys()].filter(n => n !== current && !usesCircuit(n, current) && (() => { const i = subInterface(library.get(n)); return i.ins.length + i.outs.length > 0; })());
   section('own', 'Eigene Bausteine', subs.map(n => ({ type: 'Custom', sub: n, name: n })),
     subs.length ? '' : '<p class="pal-hint">Weitere Schaltungen des Projekts erscheinen hier als Bausteine (oben auf den Schaltungsnamen tippen).</p>', false);
+  // „Verwalten“ öffnet die Liste der Schaltungen (öffnen, umbenennen, Aussehen, löschen)
+  const ownH = pal.querySelector('[data-key=own] h3');
+  const mg = document.createElement('button'); mg.className = 'pal-manage'; mg.textContent = 'Verwalten';
+  mg.onclick = showDocs; ownH.appendChild(mg);
   const recent = palState.recent.filter(t => DEF[t]?.cat);
   if (recent.length) section('recent', 'Zuletzt benutzt', recent.map(t => DEFS.find(d => d.type === t)), '', false);
   for (const cat of CATEGORIES) section(cat, cat, DEFS.filter(d => d.cat === cat));
@@ -661,7 +677,7 @@ function updateFreqLabel() {
 function askValue(c) {
   const a = attrsOf(c), st = editor.sim.st(c), m = mask(a.Bits);
   openDialog(`<div class="dialog"><h2>Wert für ${esc(a.Label || 'Eingang')} <button class="close">✕</button></h2>
-    <p style="margin-top:0;color:#6b7280">${a.Bits} Bit · 0 bis ${m} · auch 0x… (hex) oder 0b… (binär)</p>
+    <p style="margin-top:0;color:var(--muted)">${a.Bits} Bit · 0 bis ${m} · auch 0x… (hex) oder 0b… (binär)</p>
     <input type="text" inputmode="numeric" id="valIn" value="${st.value}">
     <div class="numpad">${[7, 8, 9, '←', 4, 5, 6, '+1', 1, 2, 3, '−1', '0', 'x', 'b', 'OK'].map(k => `<button data-k="${k}">${k}</button>`).join('')}</div></div>`);
   const inp = $('#valIn');
@@ -688,7 +704,7 @@ function showLiveView(c) {
 function showKeyboard(c) {
   const a = attrsOf(c), st = editor.sim?.st(c); if (!st) return;
   openDialog(`<div class="dialog"><h2>Tastatur${a.Label ? ' ' + esc(a.Label) : ''} <button class="close">✕</button></h2>
-    <p style="margin-top:0;color:#6b7280">Getippte Zeichen kommen in den Puffer. Die Schaltung liest sie mit en = 1 und einer Taktflanke an C.</p>
+    <p style="margin-top:0;color:var(--muted)">Getippte Zeichen kommen in den Puffer. Die Schaltung liest sie mit en = 1 und einer Taktflanke an C.</p>
     <input type="text" id="kbIn" placeholder="hier tippen …" autocapitalize="off" autocomplete="off" spellcheck="false">
     <div class="row" style="display:flex;gap:8px;margin-top:8px"><button class="btn" id="kbEnter">Zeilenende ↵</button><button class="btn" id="kbClear">Puffer leeren</button></div>
     <p>Puffer: <code id="kbBuf"></code></p></div>`);
@@ -724,7 +740,7 @@ function showMemory(c, live) {
   const parseCell = s => { s = s.trim(); if (!s) return 0; return fmt === 'hex' ? parseInt(s, 16) : fmt === 'bin' ? parseInt(s, 2) : parseNum(s); };
   const title = (a.Label ? a.Label + ' – ' : '') + def.name;
   openDialog(`<div class="dialog mem" id="memView"><h2>${esc(title)} <button class="close">✕</button></h2>
-    <p style="margin-top:0;color:#6b7280">${size} Wörter × ${bits} Bit${live ? ' · aktueller Inhalt während der Simulation' : ''}. Werte antippen und ändern.</p>
+    <p style="margin-top:0;color:var(--muted)">${size} Wörter × ${bits} Bit${live ? ' · aktueller Inhalt während der Simulation' : ''}. Werte antippen und ändern.</p>
     <div class="chips" id="memFmt">${[['hex', 'Hex'], ['def', 'Dezimal'], ['bin', 'Binär']].map(([k, l]) => `<button class="chip${k === fmt ? ' on' : ''}" data-f="${k}">${l}</button>`).join('')}</div>
     <div class="mem-grid" id="memGrid"></div>
     <div class="mem-pages" id="memPages"></div>
@@ -918,7 +934,7 @@ function showMenu() {
     </div>
     <h3>Projekt <span class="h3-sub">„${esc(current)}“ · ${library.size} Schaltung${library.size > 1 ? 'en' : ''}</span></h3><div class="menu-list">
       ${item('new', '＋', 'Neue Schaltung', 'Im Projekt – nutzbar als Baustein')}
-      ${item('modlook', '⬚', 'Aussehen als Baustein', 'Rechteck oder DIL-Chip, Pins, Breite')}
+      ${item('modlook', '⬚', 'Aussehen als Baustein', 'Form, Pins, Breite, Parameter')}
       ${item('docs', '🗂', 'Schaltungen verwalten', 'Wechseln, umbenennen, löschen')}
       ${item('newproj', '🗑', 'Neues Projekt', 'Alle Schaltungen schließen')}
     </div>
@@ -931,13 +947,18 @@ function showMenu() {
     <h3>Einstellungen &amp; Hilfe</h3>
     <div class="row" style="margin-bottom:10px"><span style="font-size:15px">Schaltzeichen:</span>
       <div class="chips"><button class="chip ${settings.shapes !== 'ieee' ? 'on' : ''}" data-shape="iec">DIN / IEC (&amp;, ≥1)</button><button class="chip ${settings.shapes === 'ieee' ? 'on' : ''}" data-shape="ieee">IEEE (amerikanisch)</button></div></div>
+    <div class="row" style="margin-bottom:10px"><span style="font-size:15px">Darstellung:</span>
+      <div class="chips">${[['auto', 'Wie iPad'], ['light', 'Hell'], ['dark', 'Dunkel']].map(([k, l]) => `<button class="chip ${(settings.theme || 'auto') === k ? 'on' : ''}" data-theme="${k}">${l}</button>`).join('')}</div></div>
     <div class="menu-list">${item('help', '？', 'Bedienung', "So funktioniert's auf dem iPad")}</div>
-    <p class="muted" style="margin-top:16px">Digital Web · ${VERSION}</p>
+    <p class="muted menu-foot">Digital Web · ${VERSION} ·
+      <a href="https://github.com/buchhems/digital-web" target="_blank" rel="noopener">Quellcode auf GitHub</a> ·
+      nach <a href="https://github.com/hneemann/Digital" target="_blank" rel="noopener">Digital von H. Neemann</a></p>
   </div>`);
   $('#sheet').onclick = e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.ex) { loadExample(EXAMPLES[+b.dataset.ex]); closeDialog(); }
     if (b.dataset.shape) { settings.shapes = b.dataset.shape; saveSettings(); buildPalette(); editor.invalidate(); showMenu(); }
+    if (b.dataset.theme) { settings.theme = b.dataset.theme; saveSettings(); applyTheme(); showMenu(); }
     switch (b.dataset.a) {
       case 'new': closeDialog(); addDoc('Schaltung', new Circuit()); break;
       case 'docs': showDocs(); break;
@@ -1028,8 +1049,14 @@ async function showHdl(lang = 'verilog') {
 }
 
 function exportPng() {
-  const sel = new Set(editor.sel); editor.sel.clear(); editor.render();
-  editor.cv.toBlob(b => { download(new File([b], current + '.png', { type: 'image/png' })); editor.sel = sel; editor.redraw(); });
+  // Bild immer im hellen Schema (für Arbeitsblätter und Ausdrucke)
+  const wasDark = document.documentElement.dataset.theme === 'dark';
+  const sel = new Set(editor.sel); editor.sel.clear();
+  if (wasDark) setDarkCanvas(false);
+  editor.render();
+  editor.cv.toBlob(b => { download(new File([b], current + '.png', { type: 'image/png' })); });
+  if (wasDark) setDarkCanvas(true);
+  editor.sel = sel; editor.redraw();
 }
 
 $('#fileInput').addEventListener('change', async e => {
@@ -1472,6 +1499,8 @@ function migrateComparators(c) {
   library.clear(); library.set('Schaltung', new Circuit()); touchLibrary();
   setCurrent('Schaltung', { fit: false });
 })();
+
+applyTheme();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
 

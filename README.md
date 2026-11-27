@@ -9,6 +9,7 @@ liest und schreibt dessen `.dig`-Dateien.
 ## Funktionen
 
 - **Touch-Bedienung:** Bauteile antippen oder auf die Fläche ziehen. Leitungen zieht man vom Anschlusspunkt aus. Verschoben wird mit einem Finger, gezoomt mit zwei. Der Apple Pencil funktioniert ebenfalls. Die Bauteilleiste hat eine Suche und „Zuletzt benutzt“; selten gebrauchte Kategorien sind eingeklappt.
+- **Dunkler Modus:** Menü → Darstellung: „Wie iPad“ (folgt der Systemeinstellung), „Hell“ oder „Dunkel“. Exportierte Bilder sind immer hell (für Arbeitsblätter).
 - **Schaltzeichen nach DIN EN 60617** (&, ≥1, =1, 1 mit Negationskreis). Die amerikanischen IEEE-Symbole lassen sich optional einschalten.
 - **Bauteile (rund 100, wie in Digital):**
   - Ein-/Ausgabe: Ein-/Ausgänge (auch mehrbittig), LED, RGB-LED, LED mit Polung (Anode/Kathode), Glühlampe, Taster, Taster mit LED, DIP-Schalter, Drehgeber, Takt, Konstante, Masse/Versorgung, Messwert, 7-Segment-Anzeigen
